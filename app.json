@@ -8,6 +8,9 @@
     "scheme": "appfinanceiro",
     "ios": { "supportsTablet": true },
     "android": { "package": "com.appfinanceiro.app" },
-    "web": { "bundler": "metro" }
+    "web": {
+      "bundler": "metro",
+      "favicon": "./public/favicon.ico"
+    }
   }
 }

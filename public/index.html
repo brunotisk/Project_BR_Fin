@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover, user-scalable=no"
+    />
+    <title>App Financeiro</title>
+
+    <!-- PWA Primary Meta Tags -->
+    <meta name="theme-color" content="#2563EB" />
+    <meta name="application-name" content="App Financeiro" />
+    <meta name="description" content="Aplicativo de controle financeiro pessoal e SaaS." />
+
+    <!-- Apple iOS Safari PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="App Financeiro" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+
+    <!-- Favicon & PWA Manifest -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Estilo de reset para React Native Web -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: #F8FAFC;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>
+      Você precisa habilitar o JavaScript para rodar este aplicativo.
+    </noscript>
+    <div id="root"></div>
+
+    <!-- Registro do Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(function (registration) {
+              console.log('[PWA] Service Worker registrado com sucesso:', registration.scope);
+            })
+            .catch(function (error) {
+              console.warn('[PWA] Falha ao registrar Service Worker:', error);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>
+
