@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "App Financeiro",
+    "slug": "app-financeiro",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "appfinanceiro",
+    "ios": { "supportsTablet": true },
+    "android": { "package": "com.appfinanceiro.app" },
+    "web": { "bundler": "metro" }
+  }
+}

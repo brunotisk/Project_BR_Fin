@@ -1,0 +1,20 @@
+export const colors = {
+  primary: '#2563EB',
+  primaryHover: '#1D4ED8',
+  primaryLight: '#EFF6FF',
+  background: '#F8FAFC',
+  surface: '#FFFFFF',
+  surfaceHover: '#F1F5F9',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  muted: '#64748B',
+  border: '#E2E8F0',
+  borderFocus: '#94A3B8',
+  income: '#10B981',
+  incomeLight: '#ECFDF5',
+  expense: '#EF4444',
+  expenseLight: '#FEF2F2',
+  warning: '#F59E0B',
+  warningLight: '#FFFBEB',
+  dark: '#0B1120'
+}
