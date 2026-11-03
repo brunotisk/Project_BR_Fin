@@ -1,8 +1,9 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { PanResponder, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useMemo } from 'react'
 import { useNavigation, useRoute } from '@react-navigation/native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { HomeScreen } from '../screens/HomeScreen'
 import { CartoesScreen } from '../screens/CartoesScreen'
@@ -54,12 +55,22 @@ const SwipeFinanceiro = comSwipe(FinanceiroNavigator)
 const SwipeConfiguracoes = comSwipe(ConfiguracoesScreen)
 
 export function TabNavigator() {
+  const insets = useSafeAreaInsets()
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'web' ? 10 : 8)
+
   return (
     <Tab.Navigator screenOptions={{
       headerShown: false,
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.muted,
-      tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, height: 60, paddingBottom: 8, paddingTop: 6 },
+      tabBarStyle: {
+        backgroundColor: colors.surface,
+        borderTopColor: colors.border,
+        borderTopWidth: 1,
+        height: 54 + bottomInset,
+        paddingBottom: bottomInset,
+        paddingTop: 6
+      },
       tabBarLabelStyle: { fontSize: 11, fontWeight: '600' }
     }}>
       <Tab.Screen name="TodoTab" component={SwipeTodo} options={{ tabBarLabel: 'Todo List', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={size} color={color} /> }} />

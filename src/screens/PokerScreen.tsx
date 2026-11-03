@@ -347,30 +347,54 @@ export function PokerScreen() {
         </View>
 
         {/* ======================================================== */}
-        {/* CARDS SUPERIORES EXATOS DA PLANILHA (ValorSacado, Taxa) */}
+        {/* CARDS SUPERIORES ADAPTADOS PARA CELULAR */}
         {/* ======================================================== */}
         <View style={styles.kpiRow}>
           {/* Card ValorSacado */}
-          <View style={[styles.kpiCard, { flex: 1.4, borderLeftColor: '#0284C7' }]}>
+          <View style={[styles.kpiCard, { borderLeftColor: '#0284C7' }]}>
             <Text style={styles.kpiLabel}>ValorSacado</Text>
-            <Text style={[styles.kpiValue, { color: '#0369A1' }]}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#0369A1' }]}>
               {formatCurrency(totalSacadoGeral)}
             </Text>
             <Text style={styles.kpiHint}>Total Buy-ins do Mês</Text>
           </View>
 
           {/* Card ValorTaxa */}
-          <View style={[styles.kpiCard, { flex: 1.3, borderLeftColor: '#D97706' }]}>
+          <View style={[styles.kpiCard, { borderLeftColor: '#D97706' }]}>
             <Text style={styles.kpiLabel}>ValorTaxa</Text>
-            <Text style={[styles.kpiValue, { color: '#B45309' }]}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#B45309' }]}>
               {formatCurrency(totalTaxaGeral)}
             </Text>
             <Text style={styles.kpiHint}>Taxas acumuladas</Text>
           </View>
+        </View>
+
+        {/* Resumo Consolidado (NET Geral do Mês) + Taxa % Padrão */}
+        <View style={styles.kpiSecondRow}>
+          <View style={styles.netGeralCard}>
+            <View style={styles.netCol}>
+              <Text style={styles.netMiniLabel}>CASH OUT TOTAL</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.netMiniVal}>{formatCurrency(totalCashoutGeral)}</Text>
+            </View>
+            <View style={styles.netDivider} />
+            <View style={styles.netCol}>
+              <Text style={styles.netMiniLabel}>LÍQUIDO (NET)</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.netDestaqueVal,
+                  { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }
+                ]}
+              >
+                {totalNetGeral >= 0 ? `+${formatCurrency(totalNetGeral)}` : formatCurrency(totalNetGeral)}
+              </Text>
+            </View>
+          </View>
 
           {/* Campo Amarelo: Taxa % Padrão */}
           <TouchableOpacity
-            style={[styles.taxaBoxAmarela, { flex: 1 }]}
+            style={styles.taxaBoxAmarela}
             onPress={() => { setTaxaInputVal(taxaPadraoPercentual.toString()); setModalTaxaVisible(true) }}
           >
             <Text style={styles.taxaBoxLabel}>Taxa %</Text>
@@ -378,28 +402,8 @@ export function PokerScreen() {
               <Text style={styles.taxaBoxValor}>{taxaPadraoPercentual}%</Text>
               <Ionicons name="pencil" size={13} color="#854D0E" />
             </View>
-            <Text style={styles.taxaBoxHint}>Toque p/ editar</Text>
+            <Text style={styles.taxaBoxHint}>Editar</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Resumo Consolidado (NET Geral do Mês) */}
-        <View style={styles.netGeralCard}>
-          <View style={styles.netCol}>
-            <Text style={styles.netMiniLabel}>CASH OUT TOTAL</Text>
-            <Text style={styles.netMiniVal}>{formatCurrency(totalCashoutGeral)}</Text>
-          </View>
-          <View style={styles.netDivider} />
-          <View style={styles.netCol}>
-            <Text style={styles.netMiniLabel}>LÍQUIDO (NET)</Text>
-            <Text
-              style={[
-                styles.netDestaqueVal,
-                { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }
-              ]}
-            >
-              {totalNetGeral >= 0 ? `+${formatCurrency(totalNetGeral)}` : formatCurrency(totalNetGeral)}
-            </Text>
-          </View>
         </View>
 
         {/* Filtro de Mês */}
@@ -461,72 +465,84 @@ export function PokerScreen() {
               </View>
 
               {/* ======================================================== */}
-              {/* BOX DE RESUMO DA SESSÃO (EM CIMA DO DIA DO LANÇAMENTO!) */}
+              {/* BOX DE RESUMO DA SESSÃO (GRADE 2x2 RESPONSIVA) */}
               {/* ======================================================== */}
               <View style={styles.resumoSessaoEmCimaContainer}>
                 <View style={styles.resumoGridCards}>
-                  {/* Card BuyIN */}
-                  <View style={styles.resumoMiniBox}>
-                    <Text style={styles.resumoMiniLabel}>BuyIN</Text>
-                    <Text style={styles.resumoMiniValor}>{formatCurrency(buyInSessao)}</Text>
-                  </View>
-
-                  {/* Card Taxa */}
-                  <View style={styles.resumoMiniBox}>
-                    <Text style={styles.resumoMiniLabel}>Taxa</Text>
-                    <Text style={[styles.resumoMiniValor, { color: '#B45309' }]}>
-                      {formatCurrency(taxaSessao)}
-                    </Text>
-                  </View>
-
-                  {/* Card CASHout (CAMPO AMARELO - SOMA DOS LOCAIS) */}
-                  <TouchableOpacity
-                    style={styles.cashoutMiniBoxAmarelo}
-                    onPress={() => abrirModalCashout(dataSessao, itens)}
-                  >
-                    <View style={styles.cashoutMiniTop}>
-                      <Text style={styles.cashoutMiniLabel}>CASHout</Text>
-                      <Ionicons name="pencil" size={12} color="#854D0E" />
-                    </View>
-                    <Text style={styles.cashoutMiniValor}>
-                      {formatCurrency(cashoutTotalSessao)}
-                    </Text>
-                    {detalhesLocais ? (
-                      <Text numberOfLines={1} style={styles.cashoutDetalhesTexto}>
-                        {detalhesLocais}
+                  {/* Linha 1: BuyIN e Taxa */}
+                  <View style={styles.resumoGridRow}>
+                    <View style={styles.resumoMiniBox}>
+                      <Text style={styles.resumoMiniLabel}>BuyIN</Text>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.resumoMiniValor}>
+                        {formatCurrency(buyInSessao)}
                       </Text>
-                    ) : (
-                      <Text style={styles.cashoutDetalhesTexto}>Toque p/ editar por local</Text>
-                    )}
-                  </TouchableOpacity>
+                    </View>
 
-                  {/* Card NET (Resultado da Sessão) */}
-                  <View
-                    style={[
-                      styles.resumoMiniBox,
-                      {
-                        borderLeftWidth: 3,
-                        borderLeftColor: netSessao >= 0 ? '#16A34A' : '#DC2626'
-                      }
-                    ]}
-                  >
-                    <Text style={styles.resumoMiniLabel}>NET</Text>
-                    <Text
+                    <View style={styles.resumoMiniBox}>
+                      <Text style={styles.resumoMiniLabel}>Taxa</Text>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.resumoMiniValor, { color: '#B45309' }]}>
+                        {formatCurrency(taxaSessao)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Linha 2: CASHout (editável) e NET */}
+                  <View style={[styles.resumoGridRow, { marginTop: 8 }]}>
+                    <TouchableOpacity
+                      style={styles.cashoutMiniBoxAmarelo}
+                      onPress={() => abrirModalCashout(dataSessao, itens)}
+                    >
+                      <View style={styles.cashoutMiniTop}>
+                        <Text style={styles.cashoutMiniLabel}>CASHout</Text>
+                        <Ionicons name="pencil" size={12} color="#854D0E" />
+                      </View>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cashoutMiniValor}>
+                        {formatCurrency(cashoutTotalSessao)}
+                      </Text>
+                      {detalhesLocais ? (
+                        <Text numberOfLines={1} style={styles.cashoutDetalhesTexto}>
+                          {detalhesLocais}
+                        </Text>
+                      ) : (
+                        <Text style={styles.cashoutDetalhesTexto}>Toque p/ editar por local</Text>
+                      )}
+                    </TouchableOpacity>
+
+                    <View
                       style={[
-                        styles.resumoMiniValor,
-                        { color: netSessao >= 0 ? '#15803D' : '#DC2626' }
+                        styles.resumoMiniBox,
+                        {
+                          borderLeftWidth: 3.5,
+                          borderLeftColor: netSessao >= 0 ? '#16A34A' : '#DC2626'
+                        }
                       ]}
                     >
-                      {netSessao >= 0 ? `+${formatCurrency(netSessao)}` : formatCurrency(netSessao)}
-                    </Text>
+                      <Text style={styles.resumoMiniLabel}>NET (Sessão)</Text>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        style={[
+                          styles.resumoMiniValor,
+                          { color: netSessao >= 0 ? '#15803D' : '#DC2626', fontWeight: '900' }
+                        ]}
+                      >
+                        {netSessao >= 0 ? `+${formatCurrency(netSessao)}` : formatCurrency(netSessao)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
+              </View>
+
+              {/* Dica de rolagem lateral para celular */}
+              <View style={styles.tableDicaContainer}>
+                <Ionicons name="swap-horizontal" size={12} color={colors.muted} />
+                <Text style={styles.tableDicaTexto}>Deslize lateralmente para ver todas as colunas</Text>
               </View>
 
               {/* ======================================================== */}
               {/* TABELA DE ENTRADAS (LINHAS UNIFORMES, SEM DISTORÇÃO) */}
               {/* ======================================================== */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableScroll}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingRight: 12 }} style={styles.tableScroll}>
                 <View style={[styles.tableContainer, { minWidth: 580 }]}>
                   {/* Header da Tabela */}
                   <View style={styles.tableHeader}>
@@ -921,8 +937,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40
+    padding: 14,
+    paddingBottom: 110
   },
   header: {
     flexDirection: 'row',
@@ -957,9 +973,10 @@ const styles = StyleSheet.create({
   kpiRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 12
+    marginBottom: 10
   },
   kpiCard: {
+    flex: 1,
     backgroundColor: colors.surface,
     padding: 12,
     borderRadius: 12,
@@ -971,6 +988,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 2
+  },
+  kpiSecondRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+    alignItems: 'stretch'
   },
   kpiLabel: {
     fontSize: 12,
@@ -987,12 +1010,14 @@ const styles = StyleSheet.create({
     color: colors.muted
   },
   taxaBoxAmarela: {
+    flex: 1,
     backgroundColor: '#FEF08A',
     borderColor: '#FACC15',
     borderWidth: 1.5,
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.04,
     shadowRadius: 4,
@@ -1020,15 +1045,15 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   netGeralCard: {
+    flex: 2,
     flexDirection: 'row',
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
-    justifyContent: 'space-around',
-    marginBottom: 12
+    justifyContent: 'space-around'
   },
   netCol: {
     alignItems: 'center'
@@ -1150,8 +1175,26 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border
   },
   resumoGridCards: {
+    flexDirection: 'column'
+  },
+  resumoGridRow: {
     flexDirection: 'row',
     gap: 8
+  },
+  tableDicaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9'
+  },
+  tableDicaTexto: {
+    fontSize: 10,
+    color: colors.muted,
+    fontWeight: '600'
   },
   resumoMiniBox: {
     flex: 1,
@@ -1174,7 +1217,7 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   cashoutMiniBoxAmarelo: {
-    flex: 1.3,
+    flex: 1,
     backgroundColor: '#FEF08A',
     borderRadius: 8,
     padding: 8,
