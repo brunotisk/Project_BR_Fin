@@ -1,0 +1,14 @@
+{
+  "name": "App Financeiro",
+  "version": "0.2.0",
+  "buildDate": "2026-11-02",
+  "buildId": "20261102.1",
+  "env": "production",
+  "changes": [
+    "Suporte completo a PWA instalável",
+    "Tela de Poker ajustada para telas de celulares",
+    "Correção de sobreposição na barra inferior de navegação",
+    "Adição de indicador de versão do aplicativo"
+  ]
+}
+

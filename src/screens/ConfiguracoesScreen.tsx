@@ -7,6 +7,7 @@ import { useAuth } from '../services/AuthProvider'
 import { colors } from '../theme'
 import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
+import { APP_INFO } from '../constants/version'
 
 type ConviteRecebido = { convite_id: string; agenda_id: string; agenda_nome: string; remetente: string; criado_em: string }
 type ConviteEnviado = { id: string; email: string; status: string; criado_em: string }
@@ -97,10 +98,48 @@ export function ConfiguracoesScreen() {
     <View style={styles.card}><View style={styles.heading}><View style={[styles.icon, { backgroundColor: cor + '20' }]}><Ionicons name="color-palette-outline" size={20} color={cor} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Minha cor</Text><Text style={styles.itemSub}>Identifica suas atividades no calendário compartilhado</Text></View></View><View style={styles.colors}>{CORES.map((c) => <TouchableOpacity key={c} accessibilityLabel={`Selecionar cor ${c}`} onPress={() => alterarCor(c)} style={[styles.colorOption, { backgroundColor: c }, cor === c && styles.colorSelected]}>{cor === c ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}</TouchableOpacity>)}</View></View>
 
     <View style={styles.card}><Text style={styles.sectionTitle}>Conta</Text><Text style={styles.itemSub}>{session?.user.email}</Text><TouchableOpacity onPress={() => void signOut()} style={styles.signOut}><Ionicons name="log-out-outline" size={18} color={colors.expense} /><Text style={styles.signOutText}>Sair da conta</Text></TouchableOpacity></View>
+
+    {/* Versão do Aplicativo */}
+    <View style={styles.card}>
+      <View style={styles.heading}>
+        <View style={styles.icon}>
+          <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={styles.headingText}>
+          <Text style={styles.sectionTitle}>Sobre o Aplicativo</Text>
+          <Text style={styles.itemSub}>{APP_INFO.name}</Text>
+        </View>
+      </View>
+
+      <View style={styles.versionContainer}>
+        <View style={styles.versionRow}>
+          <Text style={styles.versionLabel}>Versão</Text>
+          <View style={styles.versionBadge}>
+            <Text style={styles.versionBadgeText}>v{APP_INFO.version}</Text>
+          </View>
+        </View>
+
+        <View style={styles.versionRow}>
+          <Text style={styles.versionLabel}>Build</Text>
+          <Text style={styles.versionValue}>{APP_INFO.buildId} ({APP_INFO.buildDate})</Text>
+        </View>
+
+        <View style={styles.versionRow}>
+          <Text style={styles.versionLabel}>Ambiente</Text>
+          <Text style={styles.versionValue}>{APP_INFO.env}</Text>
+        </View>
+      </View>
+    </View>
   </ScrollView>
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: colors.background }, container: { padding: 18, gap: 14, paddingBottom: 30 }, title: { fontSize: 27, fontWeight: '800', color: colors.text }, subtitle: { fontSize: 13, color: colors.muted, marginTop: -9 },
-  card: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 13 }, heading: { flexDirection: 'row', alignItems: 'center', gap: 11 }, icon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight }, headingText: { flex: 1, gap: 3 }, sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text }, itemSub: { fontSize: 12, color: colors.muted }, timeLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600', marginTop: 3 }, hourOptions: { flexDirection: 'row', gap: 7 }, hourOption: { minWidth: 38, paddingVertical: 8, alignItems: 'center', borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, hourOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, hourOptionText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, hourOptionTextActive: { color: colors.primary, fontWeight: '700' }, input: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 13, color: colors.text, backgroundColor: colors.surface, fontSize: 14 }, hint: { fontSize: 11, lineHeight: 16, color: colors.muted }, sentList: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, gap: 9 }, listTitle: { fontSize: 12, fontWeight: '700', color: colors.text }, sentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, status: { fontSize: 10, fontWeight: '700', color: colors.warning }, accepted: { color: colors.income }, colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 4 }, colorOption: { width: 31, height: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, colorSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.08 }] }, invite: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }, inviteInfo: { flex: 1, gap: 3 }, itemTitle: { fontSize: 13, color: colors.text, fontWeight: '700' }, accept: { backgroundColor: colors.primary, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9 }, acceptText: { color: '#fff', fontSize: 12, fontWeight: '700' }, signOut: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, signOutText: { color: colors.expense, fontSize: 13, fontWeight: '700' }
+  page: { flex: 1, backgroundColor: colors.background }, container: { padding: 18, gap: 14, paddingBottom: 50 }, title: { fontSize: 27, fontWeight: '800', color: colors.text }, subtitle: { fontSize: 13, color: colors.muted, marginTop: -9 },
+  card: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 13 }, heading: { flexDirection: 'row', alignItems: 'center', gap: 11 }, icon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight }, headingText: { flex: 1, gap: 3 }, sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text }, itemSub: { fontSize: 12, color: colors.muted }, timeLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600', marginTop: 3 }, hourOptions: { flexDirection: 'row', gap: 7 }, hourOption: { minWidth: 38, paddingVertical: 8, alignItems: 'center', borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, hourOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, hourOptionText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, hourOptionTextActive: { color: colors.primary, fontWeight: '700' }, input: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 13, color: colors.text, backgroundColor: colors.surface, fontSize: 14 }, hint: { fontSize: 11, lineHeight: 16, color: colors.muted }, sentList: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, gap: 9 }, listTitle: { fontSize: 12, fontWeight: '700', color: colors.text }, sentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, status: { fontSize: 10, fontWeight: '700', color: colors.warning }, accepted: { color: colors.income }, colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 4 }, colorOption: { width: 31, height: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, colorSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.08 }] }, invite: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }, inviteInfo: { flex: 1, gap: 3 }, itemTitle: { fontSize: 13, color: colors.text, fontWeight: '700' }, accept: { backgroundColor: colors.primary, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9 }, acceptText: { color: '#fff', fontSize: 12, fontWeight: '700' }, signOut: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, signOutText: { color: colors.expense, fontSize: 13, fontWeight: '700' },
+  versionContainer: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 8 },
+  versionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  versionLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  versionValue: { fontSize: 12, fontWeight: '600', color: colors.text },
+  versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' },
+  versionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary }
 })

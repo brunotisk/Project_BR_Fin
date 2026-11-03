@@ -1,6 +1,7 @@
 {
   "short_name": "App Fin",
   "name": "App Financeiro",
+  "version": "0.2.0",
   "description": "Controle financeiro pessoal e SaaS inteligente.",
   "icons": [
     {
