@@ -156,11 +156,14 @@ export const CASHOUTS_INICIAIS: CashoutsPokerMap = {
 export const LOCAIS_PADRAO = ['MonteCarlo', 'H2']
 export const CARTOES_PADRAO = ['Nubank', 'PicPay', 'BTG']
 
+const UUID_POKER = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 const STORAGE_KEYS = {
   FECHAMENTO_PREFIX: '@fin_fechamento_',
   CARTOES_PREFIX: '@fin_cartoes_controle_',
   LANCAMENTOS: '@fin_poker_lancamentos',
   CASHOUTS: '@fin_poker_cashouts',
+  DIAS_POKER_BLOQUEADOS: '@fin_poker_dias_bloqueados',
   TAXA_PADRAO: '@fin_poker_taxa_padrao',
   LOCAIS: '@fin_poker_locais',
   MES_SELECIONADO: '@fin_mes_fechamento_selecionado'
@@ -389,16 +392,60 @@ export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<
     const usuarioId = userData?.user?.id
 
     if (usuarioId) {
-      const records = itens.map((item, index) => ({
+      const records = itens.filter((item) => UUID_POKER.test(item.id)).map((item, index) => ({
         ...item,
         usuario_id: usuarioId,
-        ordem: index
+        ordem: item.ordem ?? index
       }))
-      await (supabase as any).from('lancamentos_ma').upsert(records)
+      if (records.length > 0) {
+        const { error } = await (supabase as any).from('lancamentos_ma').upsert(records)
+        if (error) throw error
+      }
     }
   } catch (err) {
     console.warn('Erro ao salvar lançamentos poker no Supabase (mantido local):', err)
   }
+}
+
+export async function carregarDiasPokerBloqueados(): Promise<Record<string, boolean>> {
+  const local = getLocalItem<Record<string, boolean>>(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, {})
+  try {
+    const { data, error } = await (supabase as any).from('poker_dias_bloqueados').select('data_cartao').eq('travado', true)
+    if (error) throw error
+    const bloqueados = Object.fromEntries((data || []).map((item: { data_cartao: string }) => [item.data_cartao, true]))
+    setLocalItem(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, bloqueados)
+    return bloqueados
+  } catch (err) {
+    console.warn('Não foi possível carregar os dias de Poker bloqueados:', err)
+    return local
+  }
+}
+
+export async function definirDiaPokerBloqueado(dataCartao: string, travado: boolean): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (usuarioId) {
+    const { error } = await (supabase as any).from('poker_dias_bloqueados').upsert(
+      { usuario_id: usuarioId, data_cartao: dataCartao, travado },
+      { onConflict: 'usuario_id,data_cartao' }
+    )
+    if (error) throw error
+  }
+  const local = getLocalItem<Record<string, boolean>>(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, {})
+  if (travado) local[dataCartao] = true
+  else delete local[dataCartao]
+  setLocalItem(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, local)
+}
+
+export async function excluirLancamentoPoker(id: string): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (usuarioId && UUID_POKER.test(id)) {
+    const { error } = await (supabase as any).from('lancamentos_ma').delete().eq('id', id)
+    if (error) throw error
+  }
+  const local = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
+  setLocalItem(STORAGE_KEYS.LANCAMENTOS, local.filter((item) => item.id !== id))
 }
 
 export function carregarCashoutsPoker(): CashoutsPokerMap {

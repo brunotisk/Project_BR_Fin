@@ -45,6 +45,12 @@ export type Database = {
         Update: { usuario_id?: string; inicio_dia?: string; fim_dia?: string; atualizado_em?: string }
         Relationships: Relacao[]
       }
+      poker_dias_bloqueados: {
+        Row: { id: string; usuario_id: string; data_cartao: string; travado: boolean; atualizado_em: string }
+        Insert: { id?: string; usuario_id?: string; data_cartao: string; travado?: boolean; atualizado_em?: string }
+        Update: { id?: string; usuario_id?: string; data_cartao?: string; travado?: boolean; atualizado_em?: string }
+        Relationships: Relacao[]
+      }
       organizacao_itens: {
         Row: { id: string; usuario_id: string; agenda_id: string; responsavel_id: string | null; prioridade: string; tipo: string; titulo: string; descricao: string | null; data: string; horario: string | null; horario_fim: string | null; mostrar_na_agenda: boolean; mostrar_na_todo: boolean; concluido: boolean; criado_em: string; atualizado_em: string }
         Insert: { id?: string; usuario_id?: string; agenda_id?: string; responsavel_id?: string | null; prioridade?: string; tipo: string; titulo: string; descricao?: string | null; data?: string; horario?: string | null; horario_fim?: string | null; mostrar_na_agenda?: boolean; mostrar_na_todo?: boolean; concluido?: boolean; criado_em?: string; atualizado_em?: string }

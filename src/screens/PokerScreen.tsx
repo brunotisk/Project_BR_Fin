@@ -6,6 +6,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -16,8 +17,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { notify } from '../utils/notify'
+import { hojeISO } from '../utils/datas'
 import {
   carregarCashoutsPoker,
+  carregarDiasPokerBloqueados,
   carregarLancamentosPoker,
   carregarLocaisPoker,
   carregarTaxaPadraoPoker,
@@ -25,6 +28,8 @@ import {
   CashoutsPokerMap,
   LANCAMENTOS_POKER_INICIAIS,
   obterTotalCashoutSessao,
+  excluirLancamentoPoker,
+  definirDiaPokerBloqueado,
   salvarCashoutsDaSessao,
   salvarLancamentosPoker,
   salvarLocaisPoker,
@@ -32,9 +37,47 @@ import {
 } from '../services/planilhasService'
 import { LancamentoPoker } from '../types'
 
+const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+const MES_NUMERO: Record<string, number> = { jan: 1, janeiro: 1, fev: 2, fevereiro: 2, mar: 3, março: 3, abr: 4, abril: 4, mai: 5, maio: 5, jun: 6, junho: 6, jul: 7, julho: 7, ago: 8, agosto: 8, set: 9, setembro: 9, out: 10, outubro: 10, nov: 11, novembro: 11, dez: 12, dezembro: 12 }
+
+function dataPokerOrdenacao(data: string) {
+  const m = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
+  if (!m) return 0
+  const dia = Number(m[1])
+  const mes = MES_NUMERO[m[2]] || 0
+  const ano = m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : 0
+  return ano * 10000 + mes * 100 + dia
+}
+
+function compararLancamentosRecentes(a: LancamentoPoker, b: LancamentoPoker) {
+  const porData = dataPokerOrdenacao(b.data_cartao) - dataPokerOrdenacao(a.data_cartao)
+  if (porData) return porData
+  const porOrdem = (Number(b.ordem) || 0) - (Number(a.ordem) || 0)
+  return porOrdem || String(b.criado_em || b.id).localeCompare(String(a.criado_em || a.id))
+}
+
+function dataPokerHoje() {
+  const [, mes, dia] = hojeISO().split('-').map(Number)
+  return `${dia}/${MESES_ABREVIADOS[mes - 1]}`
+}
+
+function mesPokerHoje() {
+  const [, mes] = hojeISO().split('-').map(Number)
+  return MESES[mes - 1]
+}
+
+function novoIdPoker() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (caractere) => {
+    const valor = Math.floor(Math.random() * 16)
+    return (caractere === 'x' ? valor : (valor & 0x3) | 0x8).toString(16)
+  })
+}
+
 export function PokerScreen() {
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
+  const [diasBloqueados, setDiasBloqueados] = useState<Record<string, boolean>>({})
   const [taxaPadraoPercentual, setTaxaPadraoPercentual] = useState<number>(5)
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
@@ -72,6 +115,7 @@ export function PokerScreen() {
   const [formLocal, setFormLocal] = useState('MonteCarlo')
   const [formValor, setFormValor] = useState('')
   const [formTaxa, setFormTaxa] = useState('')
+  const [aplicarTaxa, setAplicarTaxa] = useState(true)
   const [manterAberto, setManterAberto] = useState(false)
 
   const carregar = useCallback(async () => {
@@ -79,6 +123,7 @@ export function PokerScreen() {
       const data = await carregarLancamentosPoker()
       setLancamentos(data)
       setCashouts(carregarCashoutsPoker())
+      setDiasBloqueados(await carregarDiasPokerBloqueados())
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setLocaisCadastrados(carregarLocaisPoker())
     } catch (err) {
@@ -112,6 +157,8 @@ export function PokerScreen() {
       map.get(data)!.push(item)
     })
     return Array.from(map.entries())
+      .map(([data, itens]) => [data, [...itens].sort(compararLancamentosRecentes)] as [string, LancamentoPoker[]])
+      .sort((a, b) => compararLancamentosRecentes(a[1][0], b[1][0]))
   }, [lancamentosFiltrados])
 
   // Totais Gerais
@@ -245,6 +292,15 @@ export function PokerScreen() {
     salvarTaxaPadraoPoker(t)
     setModalTaxaVisible(false)
     notify('Taxa Padrão', `Taxa padrão definida para ${t}%`)
+
+    // Se o modal de novo registro estiver aberto com taxa ativa, recalcula
+    if (aplicarTaxa && formValor) {
+      const v = parseFloat(formValor.replace(',', '.')) || 0
+      if (v > 0) {
+        const calculada = Math.round((v * (t / 100)) * 100) / 100
+        setFormTaxa(calculada.toFixed(2).replace('.', ','))
+      }
+    }
   }
 
   // ==========================================
@@ -252,11 +308,12 @@ export function PokerScreen() {
   // ==========================================
   const abrirModalNovo = (dataSessaoSugerida?: string) => {
     setItemEditando(null)
-    setFormMesBase(mesFiltro === 'Todos' ? 'Novembro' : mesFiltro)
-    setFormDataCartao(dataSessaoSugerida || '31/out')
+    setFormMesBase(mesFiltro === 'Todos' ? mesPokerHoje() : mesFiltro)
+    setFormDataCartao(dataSessaoSugerida || dataPokerHoje())
     setFormCartao('')
     setFormLocal('MonteCarlo')
     setFormValor('')
+    setAplicarTaxa(true)
     setFormTaxa('')
     setModalNovoVisible(true)
   }
@@ -267,23 +324,44 @@ export function PokerScreen() {
     setFormDataCartao(item.data_cartao)
     setFormCartao(item.cartao_nome)
     setFormLocal(item.local)
-    setFormValor(item.valor > 0 ? item.valor.toString() : '')
-    setFormTaxa(item.taxa > 0 ? item.taxa.toString() : '')
+    setFormValor(item.valor > 0 ? item.valor.toString().replace('.', ',') : '')
+    const temTaxa = Number(item.taxa) > 0
+    setAplicarTaxa(temTaxa)
+    setFormTaxa(temTaxa ? Number(item.taxa).toFixed(2).replace('.', ',') : '0,00')
     setModalNovoVisible(true)
   }
 
   const handleMudarValor = (valStr: string) => {
     setFormValor(valStr)
     const v = parseFloat(valStr.replace(',', '.')) || 0
-    if (formLocal === 'H2' && v > 0) {
+    if (aplicarTaxa && v > 0) {
       const calculada = Math.round((v * (taxaPadraoPercentual / 100)) * 100) / 100
-      setFormTaxa(calculada.toString())
+      setFormTaxa(calculada.toFixed(2).replace('.', ','))
+    } else {
+      setFormTaxa('0,00')
+    }
+  }
+
+  const handleToggleTaxa = (novoStatus: boolean) => {
+    setAplicarTaxa(novoStatus)
+    const v = parseFloat(formValor.replace(',', '.')) || 0
+    if (novoStatus && v > 0) {
+      const calculada = Math.round((v * (taxaPadraoPercentual / 100)) * 100) / 100
+      setFormTaxa(calculada.toFixed(2).replace('.', ','))
+    } else {
+      setFormTaxa('0,00')
     }
   }
 
   const salvarEntrada = async () => {
     const v = parseFloat(formValor.replace(',', '.')) || 0
-    const tx = parseFloat(formTaxa.replace(',', '.')) || 0
+    let tx = 0
+    if (aplicarTaxa) {
+      tx = parseFloat(formTaxa.replace(/[^\d,.-]/g, '').replace(',', '.')) || 0
+      if (tx <= 0 && v > 0) {
+        tx = Math.round((v * (taxaPadraoPercentual / 100)) * 100) / 100
+      }
+    }
 
     if (v <= 0) {
       notify('Atenção', 'Informe um valor válido.')
@@ -291,7 +369,8 @@ export function PokerScreen() {
     }
 
     const itemSalvo: LancamentoPoker = {
-      id: itemEditando ? itemEditando.id : `p-${Date.now()}`,
+      id: itemEditando ? itemEditando.id : novoIdPoker(),
+      ordem: itemEditando?.ordem ?? Math.floor(Date.now() / 1000),
       mes_base: formMesBase.trim() || 'Novembro',
       data_cartao: formDataCartao.trim() || '31/out',
       cartao_nome: formCartao.trim(),
@@ -306,6 +385,7 @@ export function PokerScreen() {
     } else {
       listaAtualizada = [...lancamentos, itemSalvo]
     }
+    listaAtualizada.sort(compararLancamentosRecentes)
 
     setLancamentos(listaAtualizada)
     await salvarLancamentosPoker(listaAtualizada)
@@ -321,11 +401,34 @@ export function PokerScreen() {
   }
 
   const excluirEntrada = async (id: string) => {
-    const lista = lancamentos.filter((it) => it.id !== id)
-    setLancamentos(lista)
-    setModalNovoVisible(false)
-    await salvarLancamentosPoker(lista)
-    notify('Excluído', 'Entrada removida.')
+    const item = lancamentos.find((it) => it.id === id)
+    if (item && diasBloqueados[item.data_cartao]) {
+      notify('Dia travado', 'Reabra o dia para excluir este lançamento.')
+      return
+    }
+    try {
+      await excluirLancamentoPoker(id)
+      setLancamentos((anteriores) => anteriores.filter((it) => it.id !== id))
+      setModalNovoVisible(false)
+      notify('Excluído', 'Lançamento removido.')
+    } catch (erro: any) {
+      notify('Não foi possível excluir', erro?.message || 'Reabra o dia e tente novamente.')
+    }
+  }
+
+  const alternarBloqueioDia = async (dataCartao: string, travado: boolean) => {
+    try {
+      await definirDiaPokerBloqueado(dataCartao, travado)
+      setDiasBloqueados((atuais) => {
+        const novos = { ...atuais }
+        if (travado) novos[dataCartao] = true
+        else delete novos[dataCartao]
+        return novos
+      })
+      notify(travado ? 'Dia travado' : 'Dia reaberto', travado ? 'Os lançamentos deste dia não podem ser excluídos.' : 'Os lançamentos podem ser excluídos novamente.')
+    } catch (erro: any) {
+      notify('Não foi possível alterar o cadeado', erro?.message || 'Tente novamente.')
+    }
   }
 
   return (
@@ -340,10 +443,16 @@ export function PokerScreen() {
             <Text style={styles.title}>Poker</Text>
             <Text style={styles.subtitle}>Sessões, Buy-ins, Taxas e Cash Out</Text>
           </View>
-          <TouchableOpacity style={styles.btnNovoTopo} onPress={() => abrirModalNovo()}>
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={styles.btnNovoTopoTexto}>Nova Entrada</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.btnTaxaTopo} onPress={() => { setTaxaInputVal(taxaPadraoPercentual.toString()); setModalTaxaVisible(true) }}>
+              <Ionicons name="pricetag-outline" size={15} color="#854D0E" />
+              <Text style={styles.btnTaxaTopoTexto}>{taxaPadraoPercentual}%</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnNovoTopo} onPress={() => abrirModalNovo()}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.btnNovoTopoTexto}>Nova Entrada</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* ======================================================== */}
@@ -369,41 +478,20 @@ export function PokerScreen() {
           </View>
         </View>
 
-        {/* Resumo Consolidado (NET Geral do Mês) + Taxa % Padrão */}
+        {/* CASH OUT TOTAL e NET com o mesmo padrão dos cards de buy-in e taxa */}
         <View style={styles.kpiSecondRow}>
-          <View style={styles.netGeralCard}>
-            <View style={styles.netCol}>
-              <Text style={styles.netMiniLabel}>CASH OUT TOTAL</Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit style={styles.netMiniVal}>{formatCurrency(totalCashoutGeral)}</Text>
-            </View>
-            <View style={styles.netDivider} />
-            <View style={styles.netCol}>
-              <Text style={styles.netMiniLabel}>LÍQUIDO (NET)</Text>
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                style={[
-                  styles.netDestaqueVal,
-                  { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }
-                ]}
-              >
-                {totalNetGeral >= 0 ? `+${formatCurrency(totalNetGeral)}` : formatCurrency(totalNetGeral)}
-              </Text>
-            </View>
+          <View style={[styles.kpiCard, { borderLeftColor: '#7C3AED' }]}>
+            <Text style={styles.kpiLabel}>Cash out total</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#6D28D9' }]}>{formatCurrency(totalCashoutGeral)}</Text>
+            <Text style={styles.kpiHint}>Total recebido no mês</Text>
           </View>
-
-          {/* Campo Amarelo: Taxa % Padrão */}
-          <TouchableOpacity
-            style={styles.taxaBoxAmarela}
-            onPress={() => { setTaxaInputVal(taxaPadraoPercentual.toString()); setModalTaxaVisible(true) }}
-          >
-            <Text style={styles.taxaBoxLabel}>Taxa %</Text>
-            <View style={styles.taxaValorWrapper}>
-              <Text style={styles.taxaBoxValor}>{taxaPadraoPercentual}%</Text>
-              <Ionicons name="pencil" size={13} color="#854D0E" />
-            </View>
-            <Text style={styles.taxaBoxHint}>Editar</Text>
-          </TouchableOpacity>
+          <View style={[styles.kpiCard, { borderLeftColor: totalNetGeral >= 0 ? '#16A34A' : '#DC2626' }]}>
+            <Text style={styles.kpiLabel}>Líquido (Net)</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>
+              {totalNetGeral >= 0 ? `+${formatCurrency(totalNetGeral)}` : formatCurrency(totalNetGeral)}
+            </Text>
+            <Text style={styles.kpiHint}>Resultado do mês</Text>
+          </View>
         </View>
 
         {/* Filtro de Mês */}
@@ -450,6 +538,7 @@ export function PokerScreen() {
             .filter(([, val]) => val > 0)
             .map(([loc, val]) => `${loc}: ${formatCurrency(val)}`)
             .join(' + ')
+          const diaTravado = Boolean(diasBloqueados[dataSessao])
 
           return (
             <View key={dataSessao} style={styles.sessaoCard}>
@@ -459,9 +548,20 @@ export function PokerScreen() {
                   <Ionicons name="calendar-outline" size={15} color="#0284C7" />
                   <Text style={styles.sessaoDiaTexto}>Sessão: {dataSessao}</Text>
                 </View>
-                <Text style={styles.sessaoEntradasBadge}>
-                  {itens.length} {itens.length === 1 ? 'entrada' : 'entradas'}
-                </Text>
+                <View style={styles.sessaoTopActions}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={diaTravado ? `Reabrir dia ${dataSessao}` : `Travar dia ${dataSessao}`}
+                    style={[styles.sessaoLockButton, diaTravado && styles.sessaoLockButtonActive]}
+                    onPress={() => void alternarBloqueioDia(dataSessao, !diaTravado)}
+                  >
+                    <Ionicons name={diaTravado ? 'lock-closed' : 'lock-open-outline'} size={14} color={diaTravado ? '#B45309' : colors.textSecondary} />
+                    <Text style={[styles.sessaoLockText, diaTravado && styles.sessaoLockTextActive]}>{diaTravado ? 'Reabrir' : 'Travar dia'}</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.sessaoEntradasBadge}>
+                    {itens.length} {itens.length === 1 ? 'entrada' : 'entradas'}
+                  </Text>
+                </View>
               </View>
 
               {/* ======================================================== */}
@@ -543,10 +643,9 @@ export function PokerScreen() {
               {/* TABELA DE ENTRADAS (LINHAS UNIFORMES, SEM DISTORÇÃO) */}
               {/* ======================================================== */}
               <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingRight: 12 }} style={styles.tableScroll}>
-                <View style={[styles.tableContainer, { minWidth: 580 }]}>
+                <View style={[styles.tableContainer, { minWidth: 490 }]}>
                   {/* Header da Tabela */}
                   <View style={styles.tableHeader}>
-                    <Text style={[styles.th, { width: 90 }]}>MesBase</Text>
                     <Text style={[styles.th, { width: 85 }]}>DataCartão</Text>
                     <Text style={[styles.th, { width: 100 }]}>Cartão</Text>
                     <Text style={[styles.th, { width: 110 }]}>Local</Text>
@@ -557,9 +656,6 @@ export function PokerScreen() {
                   {/* Linhas Uniformes de Entradas */}
                   {itens.map((item, idx) => (
                     <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
-                      {/* MesBase */}
-                      <Text style={[styles.td, { width: 90 }]}>{item.mes_base}</Text>
-
                       {/* DataCartão */}
                       <Text style={[styles.tdMuted, { width: 85 }]}>{item.data_cartao}</Text>
 
@@ -876,13 +972,26 @@ export function PokerScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Taxa (R$):</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, styles.inputTaxaSomenteLeitura]}
                     placeholder="0,00"
-                    keyboardType="numeric"
                     value={formTaxa}
-                    onChangeText={setFormTaxa}
+                    editable={false}
+                    selectTextOnFocus={false}
                   />
                 </View>
+              </View>
+
+              <View style={styles.aplicarTaxaRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.aplicarTaxaTitulo}>Aplicar taxa de {taxaPadraoPercentual}%</Text>
+                  <Text style={styles.aplicarTaxaSub}>Calculada automaticamente sobre o buy-in</Text>
+                </View>
+                <Switch
+                  value={aplicarTaxa}
+                  onValueChange={handleToggleTaxa}
+                  trackColor={{ false: '#CBD5E1', true: colors.primary }}
+                  thumbColor="#fff"
+                />
               </View>
 
               {!itemEditando && (
@@ -902,7 +1011,7 @@ export function PokerScreen() {
               )}
 
               <View style={styles.modalBotoes}>
-                {itemEditando && (
+                {itemEditando && !diasBloqueados[itemEditando.data_cartao] && (
                   <TouchableOpacity
                     style={styles.btnExcluir}
                     onPress={() => excluirEntrada(itemEditando.id)}
@@ -911,6 +1020,7 @@ export function PokerScreen() {
                     <Text style={styles.btnExcluirTexto}>Excluir</Text>
                   </TouchableOpacity>
                 )}
+                {itemEditando && diasBloqueados[itemEditando.data_cartao] && <Text style={styles.avisoDiaTravado}>Dia travado: reabra para excluir.</Text>}
 
                 <TouchableOpacity
                   style={styles.btnCancelar}
@@ -945,6 +1055,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7
+  },
+  btnTaxaTopo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#FEF08A',
+    borderColor: '#FACC15',
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+  btnTaxaTopoTexto: {
+    color: '#854D0E',
+    fontWeight: '800',
+    fontSize: 12
   },
   title: {
     fontSize: 22,
@@ -1146,6 +1278,34 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
+  },
+  sessaoTopActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9
+  },
+  sessaoLockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface
+  },
+  sessaoLockButtonActive: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FEF3C7'
+  },
+  sessaoLockText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  sessaoLockTextActive: {
+    color: '#92400E'
   },
   sessaoBadgeDia: {
     flexDirection: 'row',
@@ -1507,6 +1667,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text
   },
+  inputTaxaSomenteLeitura: {
+    backgroundColor: colors.surfaceHover,
+    color: colors.textSecondary
+  },
+  aplicarTaxaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: colors.background
+  },
+  aplicarTaxaTitulo: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  aplicarTaxaSub: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2
+  },
   inputAmarelo: {
     backgroundColor: '#FEF08A',
     borderColor: '#FACC15',
@@ -1554,6 +1738,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#DC2626'
+  },
+  avisoDiaTravado: {
+    flex: 1,
+    color: '#92400E',
+    fontSize: 11,
+    fontWeight: '600'
   },
   btnCancelar: {
     paddingHorizontal: 12,
