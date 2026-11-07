@@ -460,9 +460,20 @@ export async function definirDiaPokerBloqueado(dataCartao: string, travado: bool
 export async function excluirLancamentoPoker(id: string): Promise<void> {
   const { data: userData } = await supabase.auth.getUser()
   const usuarioId = userData?.user?.id
-  if (usuarioId && UUID_POKER.test(id)) {
-    const { error } = await (supabase as any).from('lancamentos_ma').delete().eq('id', id)
+  if (usuarioId) {
+    if (!UUID_POKER.test(id)) {
+      throw new Error('Este lançamento ainda não possui um ID válido no banco. Atualize a tela e tente novamente.')
+    }
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_ma')
+      .delete()
+      .eq('id', id)
+      .eq('usuario_id', usuarioId)
+      .select('id')
     if (error) throw error
+    if (!data?.some((linha: { id: string }) => linha.id === id)) {
+      throw new Error('O Supabase não confirmou a exclusão deste lançamento. Atualize a tela e tente novamente.')
+    }
   }
   const local = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
   setLocalItem(STORAGE_KEYS.LANCAMENTOS, local.filter((item) => item.id !== id))
