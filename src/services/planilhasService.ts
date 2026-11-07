@@ -410,11 +410,16 @@ export async function salvarLancamentosPoker(itens: LancamentoPoker[], exigirCon
     const usuarioId = userData?.user?.id
 
     if (usuarioId) {
-      const records = registrosNormalizados.map((item, index) => ({
-        ...item,
-        usuario_id: usuarioId,
-        ordem: item.ordem ?? index
-      }))
+      const records = registrosNormalizados.map((item, index) => {
+        const agora = new Date().toISOString()
+        return {
+          ...item,
+          usuario_id: usuarioId,
+          ordem: item.ordem ?? index,
+          criado_em: item.criado_em || agora,
+          atualizado_em: (item as LancamentoPoker & { atualizado_em?: string | null }).atualizado_em || agora
+        }
+      })
       if (records.length > 0) {
         const { data, error } = await (supabase as any).from('lancamentos_ma').upsert(records).select('id')
         if (error) throw error
@@ -432,8 +437,36 @@ export async function salvarLancamentosPoker(itens: LancamentoPoker[], exigirCon
   return registrosNormalizados
 }
 
+export async function salvarLancamentoPoker(item: LancamentoPoker): Promise<LancamentoPoker> {
+  const registro = UUID_POKER.test(item.id) ? item : { ...item, id: gerarUuidPoker() }
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (usuarioId) {
+    const agora = new Date().toISOString()
+    const { data, error } = await (supabase as any)
+      .from('lancamentos_ma')
+      .upsert({
+        ...registro,
+        usuario_id: usuarioId,
+        criado_em: registro.criado_em || agora,
+        atualizado_em: (registro as LancamentoPoker & { atualizado_em?: string | null }).atualizado_em || agora
+      })
+      .select('id')
+    if (error) throw error
+    if (!data?.some((linha: { id: string }) => linha.id === registro.id)) {
+      throw new Error('O Supabase não confirmou o salvamento deste lançamento.')
+    }
+  }
+  const locais = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
+  setLocalItem(STORAGE_KEYS.LANCAMENTOS, locais.some((existente) => existente.id === registro.id)
+    ? locais.map((existente) => existente.id === registro.id ? registro : existente)
+    : [...locais, registro])
+  return registro
+}
+
 export async function carregarDiasPokerBloqueados(): Promise<Record<string, boolean>> {
   const local = getLocalItem<Record<string, boolean>>(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, {})
+  const { data: userData } = await supabase.auth.getUser()
   try {
     const { data, error } = await (supabase as any).from('poker_dias_bloqueados').select('data_cartao').eq('travado', true)
     if (error) throw error
@@ -442,6 +475,10 @@ export async function carregarDiasPokerBloqueados(): Promise<Record<string, bool
     return bloqueados
   } catch (err) {
     console.warn('Não foi possível carregar os dias de Poker bloqueados:', err)
+    if (userData?.user?.id) {
+      setLocalItem(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, {})
+      return {}
+    }
     return local
   }
 }
@@ -450,11 +487,25 @@ export async function definirDiaPokerBloqueado(dataCartao: string, travado: bool
   const { data: userData } = await supabase.auth.getUser()
   const usuarioId = userData?.user?.id
   if (usuarioId) {
-    const { error } = await (supabase as any).from('poker_dias_bloqueados').upsert(
-      { usuario_id: usuarioId, data_cartao: dataCartao, travado },
-      { onConflict: 'usuario_id,data_cartao' }
-    )
+    const resposta = travado
+      ? await (supabase as any).from('poker_dias_bloqueados').upsert(
+          { usuario_id: usuarioId, data_cartao: dataCartao, travado: true },
+          { onConflict: 'usuario_id,data_cartao' }
+        )
+      : await (supabase as any).from('poker_dias_bloqueados').delete().eq('usuario_id', usuarioId).eq('data_cartao', dataCartao).select('id')
+    const { error } = resposta
     if (error) throw error
+    if (!travado) {
+      const { data: bloqueioRestante, error: erroVerificacao } = await (supabase as any)
+        .from('poker_dias_bloqueados')
+        .select('id')
+        .eq('usuario_id', usuarioId)
+        .eq('data_cartao', dataCartao)
+        .eq('travado', true)
+        .maybeSingle()
+      if (erroVerificacao) throw erroVerificacao
+      if (bloqueioRestante) throw new Error('O Supabase ainda mantém este dia travado. Atualize a tela e tente novamente.')
+    }
   }
   const local = getLocalItem<Record<string, boolean>>(STORAGE_KEYS.DIAS_POKER_BLOQUEADOS, {})
   if (travado) local[dataCartao] = true

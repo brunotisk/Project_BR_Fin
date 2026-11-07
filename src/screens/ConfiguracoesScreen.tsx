@@ -135,8 +135,8 @@ export function ConfiguracoesScreen() {
         </View>
 
         <View style={styles.versionRow}>
-          <Text style={styles.versionLabel}>Build</Text>
-          <Text style={styles.versionValue}>{APP_INFO.buildId} ({APP_INFO.buildDate})</Text>
+          <Text style={styles.versionLabel}>Último deploy · São Paulo</Text>
+          <Text style={styles.versionValue}>{APP_INFO.buildDate}</Text>
         </View>
 
         <View style={styles.versionRow}>

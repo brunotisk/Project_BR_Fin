@@ -37,7 +37,7 @@ import {
   salvarCashoutsDaSessao,
   excluirLocalSessaoPoker as excluirLocalSessaoPokerService,
   excluirSessaoPoker as excluirSessaoPokerService,
-  salvarLancamentosPoker,
+  salvarLancamentoPoker,
   salvarLocaisPoker,
   salvarTaxaPadraoPoker
 } from '../services/planilhasService'
@@ -362,8 +362,10 @@ export function PokerScreen() {
     })
 
     try {
-      const salvos = await salvarLancamentosPoker(listaAtualizada, true)
-      setLancamentos(salvos)
+      const itemSalvo = listaAtualizada.find((item) => item.id === dropdownConfig.itemId)
+      if (!itemSalvo) return
+      const salvo = await salvarLancamentoPoker(itemSalvo)
+      setLancamentos((atuais) => atuais.map((item) => item.id === salvo.id ? salvo : item))
       setModalDropdownVisible(false)
       setDropdownConfig(null)
     } catch (erro: any) {
@@ -561,8 +563,10 @@ export function PokerScreen() {
     listaAtualizada.sort(compararLancamentosRecentes)
 
     try {
-      const salvos = await salvarLancamentosPoker(listaAtualizada, true)
-      setLancamentos(salvos)
+      const salvo = await salvarLancamentoPoker(itemSalvo)
+      setLancamentos((atuais) => atuais.some((item) => item.id === salvo.id)
+        ? atuais.map((item) => item.id === salvo.id ? salvo : item)
+        : [...atuais, salvo].sort(compararLancamentosRecentes))
       setModalNovoVisible(false)
       notify('Sucesso', 'Lançamento salvo na sessão.')
     } catch (erro: any) {
@@ -761,15 +765,14 @@ export function PokerScreen() {
                   >
                     <Text style={[styles.sessaoLockText, diaTravado && styles.sessaoLockTextActive]}>{diaTravado ? 'Reabrir' : 'Travar dia'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    disabled={diaTravado}
+                  {!diaTravado && <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={diaTravado ? 'Reabra o dia para excluir a sessão' : `Excluir a sessão ${dataSessao}`}
-                    style={[styles.sessionDeleteButton, diaTravado && styles.sessionDeleteButtonDisabled]}
+                    accessibilityLabel={`Excluir a sessão ${dataSessao}`}
+                    style={styles.sessionDeleteButton}
                     onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
                   >
-                    <Ionicons name="trash-outline" size={15} color={diaTravado ? '#92400E' : '#DC2626'} />
-                  </TouchableOpacity>
+                    <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                  </TouchableOpacity>}
                   <Text style={styles.sessaoEntradasBadge}>
                     {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
                   </Text>
@@ -849,12 +852,29 @@ export function PokerScreen() {
               {/* Dica de rolagem lateral para celular */}
               {sessao.locais.map((local) => {
                 const itensLocal = itens.filter((item) => item.local === local)
-                return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
-                  <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ fontWeight: '800', color: colors.text }}>{local} - Buy-in: {formatCurrency(itensLocal.reduce((total, item) => total + (Number(item.valor) || 0), 0))}</Text><TouchableOpacity disabled={diaTravado} accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })} style={[styles.rowDeleteButton, diaTravado && { opacity: 0.35 }]}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity></View>
-                    <TouchableOpacity disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
-                      <Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Lançamento</Text>
-                    </TouchableOpacity>
+                const buyInLocal = itensLocal.reduce((total, item) => total + (Number(item.valor) || 0), 0)
+                const taxaLocal = itensLocal.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
+                const cashoutLocal = Number(cashoutsDoDia[local]) || 0
+                const netLocal = cashoutLocal - buyInLocal - taxaLocal
+                const corDoLocal = local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569'
+                return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 3, marginTop: 3 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in {formatCurrency(buyInLocal)}</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout {formatCurrency(cashoutLocal)}</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
+                      </View>
+                    </View>
+                    {!diaTravado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
+                        <Ionicons name="add" size={23} color={corDoLocal} />
+                      </TouchableOpacity>
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })}>
+                        <Ionicons name="trash-outline" size={17} color="#B91C1C" />
+                      </TouchableOpacity>
+                    </View>}
                   </View>
                   <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
                     <View style={styles.tableHeader}>
@@ -870,13 +890,13 @@ export function PokerScreen() {
                   </View>
                 </View>
               })}
-              <View style={styles.sessaoBottomBar}>
+              {!diaTravado && <View style={styles.sessaoBottomBar}>
                 <Text style={styles.inputLabel}>Adicionar outro local</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {locaisCadastrados.filter((local) => !sessao.locais.includes(local)).map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>)}
                 </View>
                 <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput style={[styles.input, { flex: 1, minHeight: 40 }]} value={novoLocalSessao} onChangeText={setNovoLocalSessao} placeholder="Novo local" editable={!diaTravado} /><TouchableOpacity disabled={diaTravado || !novoLocalSessao.trim()} style={[styles.btnAdicionarNaSessao, (diaTravado || !novoLocalSessao.trim()) && { opacity: 0.5 }]} onPress={() => void cadastrarLocalNaSessao(mesBaseSessao, dataSessao)}><Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Adicionar</Text></TouchableOpacity></View>
-              </View>
+              </View>}
             </View>
           )
         })}
