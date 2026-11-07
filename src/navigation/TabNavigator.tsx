@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { PanResponder, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, PanResponder, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useMemo } from 'react'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -17,6 +17,9 @@ import { TodoListScreen } from '../screens/TodoListScreen'
 import { AgendaScreen } from '../screens/AgendaScreen'
 import { ConfiguracoesScreen } from '../screens/ConfiguracoesScreen'
 import { colors } from '../theme'
+import { ModuleAccessProvider, useModuleAccess } from '../services/ModuleAccessProvider'
+import type { ModuleKey } from '../services/ModuleAccessProvider'
+import { notify } from '../utils/notify'
 
 
 export type BottomTabParamList = {
@@ -36,15 +39,23 @@ function comSwipe(Screen: React.ComponentType<any>) {
   return function SwipeableTab(props: any) {
     const navigation = useNavigation<any>()
     const route = useRoute()
+    const { acesso, carregado } = useModuleAccess()
     const ordem = ['TodoTab', 'AgendaTab', 'FinanceiroTab', 'ConfiguracoesTab']
     const pan = useMemo(() => PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => gesture.y0 < 72 && Math.abs(gesture.dx) > 70 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
       onPanResponderRelease: (_event, gesture) => {
+        if (!carregado) return
         const atual = ordem.indexOf(route.name)
-        const proximo = gesture.dx < 0 ? ordem[Math.min(atual + 1, ordem.length - 1)] : ordem[Math.max(atual - 1, 0)]
-        if (proximo !== route.name) navigation.navigate(proximo)
+        const direcao = gesture.dx < 0 ? 1 : -1
+        let indice = atual + direcao
+        while (indice >= 0 && indice < ordem.length) {
+          const proximo = ordem[indice]
+          const modulo: ModuleKey | null = proximo === 'TodoTab' ? 'todo' : proximo === 'AgendaTab' ? 'agenda' : proximo === 'FinanceiroTab' ? 'financeiro' : null
+          if (!modulo || acesso[modulo]) { navigation.navigate(proximo); return }
+          indice += direcao
+        }
       }
-    }), [navigation, route.name])
+    }), [navigation, route.name, acesso, carregado])
     return <View style={{ flex: 1 }} {...pan.panHandlers}><Screen {...props} /></View>
   }
 }
@@ -55,11 +66,23 @@ const SwipeFinanceiro = comSwipe(FinanceiroNavigator)
 const SwipeConfiguracoes = comSwipe(ConfiguracoesScreen)
 
 export function TabNavigator() {
+  return <ModuleAccessProvider><TabNavigatorContent /></ModuleAccessProvider>
+}
+
+function TabNavigatorContent() {
   const insets = useSafeAreaInsets()
+  const { acesso, carregado } = useModuleAccess()
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'web' ? 10 : 8)
+  if (!carregado) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>
+  const primeiraTelaAtiva = acesso.todo ? 'TodoTab' : acesso.agenda ? 'AgendaTab' : acesso.financeiro ? 'FinanceiroTab' : 'ConfiguracoesTab'
+  const listeners = (modulo: ModuleKey) => ({ tabPress: (event: { preventDefault: () => void }) => {
+    if (acesso[modulo]) return
+    event.preventDefault()
+    notify('Tela desativada', 'Habilite este módulo em Configurações para acessá-lo.')
+  } })
 
   return (
-    <Tab.Navigator screenOptions={{
+    <Tab.Navigator initialRouteName={primeiraTelaAtiva} screenOptions={{
       headerShown: false,
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.muted,
@@ -73,9 +96,9 @@ export function TabNavigator() {
       },
       tabBarLabelStyle: { fontSize: 11, fontWeight: '600' }
     }}>
-      <Tab.Screen name="TodoTab" component={SwipeTodo} options={{ tabBarLabel: 'Todo List', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={size} color={color} /> }} />
-      <Tab.Screen name="AgendaTab" component={SwipeAgenda} options={{ tabBarLabel: 'Agenda', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={color} /> }} />
-      <Tab.Screen name="FinanceiroTab" component={SwipeFinanceiro} options={{ tabBarLabel: 'Financeiro', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={size} color={color} /> }} />
+      <Tab.Screen name="TodoTab" component={SwipeTodo} listeners={listeners('todo')} options={{ tabBarLabel: 'Todo List', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={size} color={acesso.todo ? color : '#94A3B8'} />{!acesso.todo && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
+      <Tab.Screen name="AgendaTab" component={SwipeAgenda} listeners={listeners('agenda')} options={{ tabBarLabel: 'Agenda', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={acesso.agenda ? color : '#94A3B8'} />{!acesso.agenda && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
+      <Tab.Screen name="FinanceiroTab" component={SwipeFinanceiro} listeners={listeners('financeiro')} options={{ tabBarLabel: 'Financeiro', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={size} color={acesso.financeiro ? color : '#94A3B8'} />{!acesso.financeiro && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
       <Tab.Screen name="ConfiguracoesTab" component={SwipeConfiguracoes} options={{ tabBarLabel: 'Config.', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} /> }} />
     </Tab.Navigator>
   )

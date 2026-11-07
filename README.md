@@ -65,6 +65,7 @@ npx supabase gen types typescript --linked > src/types/database.ts
 | `008_preferencias_horario.sql` | Horário inicial/final dos eventos, dia todo e preferências de duração do dia |
 | `009_modulo_financeiro_planilhas.sql` | Fechamento mensal (necessidade de caixa), controle de cartões MA e lançamentos MA com múltiplas entradas |
 | `010_poker_dias_bloqueados.sql` | Cadeado por dia de Poker e bloqueio de exclusão dos lançamentos enquanto travado |
+| `011_preferencias_acesso_modulos.sql` | Preferências por usuário para habilitar ou bloquear Todo List, Agenda e Financeiro |
 
 - Não edite migrations já aplicadas: mudanças entram como uma nova migration.
   Para as próximas, use `npx supabase migration new nome`, que gera o prefixo com timestamp

@@ -158,6 +158,13 @@ export const CARTOES_PADRAO = ['Nubank', 'PicPay', 'BTG']
 
 const UUID_POKER = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+export function gerarUuidPoker() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (caractere) => {
+    const valor = Math.floor(Math.random() * 16)
+    return (caractere === 'x' ? valor : (valor & 0x3) | 0x8).toString(16)
+  })
+}
+
 const STORAGE_KEYS = {
   FECHAMENTO_PREFIX: '@fin_fechamento_',
   CARTOES_PREFIX: '@fin_cartoes_controle_',
@@ -365,8 +372,17 @@ export async function carregarLancamentosPoker(mesBase?: string): Promise<Lancam
     const { data, error } = await query
 
     if (!error && data && data.length > 0) {
-      setLocalItem(STORAGE_KEYS.LANCAMENTOS, data)
-      return data as LancamentoPoker[]
+      const locais = getLocalItem<LancamentoPoker[] | null>(STORAGE_KEYS.LANCAMENTOS, null) || []
+      const idsRemotos = new Set((data as LancamentoPoker[]).map((item) => item.id))
+      const itensLocaisPendentes = locais
+        .filter((item) => !UUID_POKER.test(item.id) || !idsRemotos.has(item.id))
+        .map((item) => UUID_POKER.test(item.id) ? item : { ...item, id: gerarUuidPoker() })
+      const mesclados = [...data as LancamentoPoker[], ...itensLocaisPendentes]
+      if (itensLocaisPendentes.length > 0) {
+        return await salvarLancamentosPoker(mesclados)
+      }
+      setLocalItem(STORAGE_KEYS.LANCAMENTOS, mesclados)
+      return mesclados
     }
   } catch (err) {
     console.warn('Fallback local para Poker Lançamentos:', err)
@@ -384,15 +400,16 @@ export async function carregarLancamentosPoker(mesBase?: string): Promise<Lancam
     : LANCAMENTOS_POKER_INICIAIS
 }
 
-export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<void> {
-  setLocalItem(STORAGE_KEYS.LANCAMENTOS, itens)
+export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<LancamentoPoker[]> {
+  const registrosNormalizados = itens.map((item) => UUID_POKER.test(item.id) ? item : { ...item, id: gerarUuidPoker() })
+  setLocalItem(STORAGE_KEYS.LANCAMENTOS, registrosNormalizados)
 
   try {
     const { data: userData } = await supabase.auth.getUser()
     const usuarioId = userData?.user?.id
 
     if (usuarioId) {
-      const records = itens.filter((item) => UUID_POKER.test(item.id)).map((item, index) => ({
+      const records = registrosNormalizados.map((item, index) => ({
         ...item,
         usuario_id: usuarioId,
         ordem: item.ordem ?? index
@@ -405,6 +422,7 @@ export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<
   } catch (err) {
     console.warn('Erro ao salvar lançamentos poker no Supabase (mantido local):', err)
   }
+  return registrosNormalizados
 }
 
 export async function carregarDiasPokerBloqueados(): Promise<Record<string, boolean>> {

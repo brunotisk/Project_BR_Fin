@@ -30,6 +30,7 @@ import {
   obterTotalCashoutSessao,
   excluirLancamentoPoker,
   definirDiaPokerBloqueado,
+  gerarUuidPoker,
   salvarCashoutsDaSessao,
   salvarLancamentosPoker,
   salvarLocaisPoker,
@@ -62,16 +63,26 @@ function dataPokerHoje() {
   return `${dia}/${MESES_ABREVIADOS[mes - 1]}`
 }
 
-function mesPokerHoje() {
-  const [, mes] = hojeISO().split('-').map(Number)
-  return MESES[mes - 1]
+function mesBaseHojeKey() {
+  return hojeISO().slice(0, 7)
 }
 
-function novoIdPoker() {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (caractere) => {
-    const valor = Math.floor(Math.random() * 16)
-    return (caractere === 'x' ? valor : (valor & 0x3) | 0x8).toString(16)
-  })
+function decomporMesBase(valor: string): { ano: number | null; mes: number } | null {
+  const normalizado = valor.trim().toLowerCase()
+  const iso = normalizado.match(/^(\d{4})-(\d{1,2})$/)
+  if (iso) return { ano: Number(iso[1]), mes: Number(iso[2]) }
+  const texto = normalizado.match(/^([a-zç]+)(?:\s+(?:de\s+)?(\d{4}))?$/i)
+  if (!texto) return null
+  const mes = MES_NUMERO[texto[1]]
+  return mes ? { ano: texto[2] ? Number(texto[2]) : null, mes } : null
+}
+
+function rotuloMesBase(valor: string) {
+  const partes = decomporMesBase(valor)
+  if (!partes) return valor
+  if (!partes.ano) return `${MESES[partes.mes - 1]} (ano não informado)`
+  const rotulo = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(partes.ano, partes.mes - 1, 1))
+  return rotulo.charAt(0).toLocaleUpperCase('pt-BR') + rotulo.slice(1)
 }
 
 export function PokerScreen() {
@@ -82,16 +93,19 @@ export function PokerScreen() {
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
 
-  const [mesFiltro, setMesFiltro] = useState<string>('Novembro')
+  const [mesFiltro, setMesFiltro] = useState<string>(mesBaseHojeKey())
+  const [filtroMesAberto, setFiltroMesAberto] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   // Modal para Nova Entrada / Edição de Linha
   const [modalNovoVisible, setModalNovoVisible] = useState(false)
   const [itemEditando, setItemEditando] = useState<LancamentoPoker | null>(null)
+  const [itemExcluirConfirmar, setItemExcluirConfirmar] = useState<LancamentoPoker | null>(null)
 
   // Modal para Dropdown Verde (Local ou Cartão)
   const [modalDropdownVisible, setModalDropdownVisible] = useState(false)
+  const [formDropdownAberto, setFormDropdownAberto] = useState<'mesBase' | 'cartao' | 'local' | null>(null)
   const [dropdownConfig, setDropdownConfig] = useState<{
     itemId: string
     tipo: 'cartao' | 'local'
@@ -109,7 +123,7 @@ export function PokerScreen() {
   const [taxaInputVal, setTaxaInputVal] = useState('5')
 
   // Formulário de Nova Entrada
-  const [formMesBase, setFormMesBase] = useState('Novembro')
+  const [formMesBase, setFormMesBase] = useState(mesBaseHojeKey())
   const [formDataCartao, setFormDataCartao] = useState('31/out')
   const [formCartao, setFormCartao] = useState('')
   const [formLocal, setFormLocal] = useState('MonteCarlo')
@@ -144,9 +158,28 @@ export function PokerScreen() {
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter((item) => {
       if (mesFiltro === 'Todos') return true
-      return item.mes_base.toLowerCase() === mesFiltro.toLowerCase()
+      const itemMes = decomporMesBase(item.mes_base)
+      const filtro = decomporMesBase(mesFiltro)
+      if (!itemMes || !filtro || itemMes.mes !== filtro.mes) return false
+      return itemMes.ano === null || itemMes.ano === filtro.ano
     })
   }, [lancamentos, mesFiltro])
+
+  const opcoesMesBase = useMemo(() => {
+    const [anoAtual, mesAtual] = hojeISO().slice(0, 7).split('-').map(Number)
+    const indiceAtual = anoAtual * 12 + mesAtual - 1
+    const valores = new Set<string>()
+    for (let indice = indiceAtual - 24; indice <= indiceAtual + 24; indice += 1) {
+      const ano = Math.floor(indice / 12)
+      const mes = (indice % 12) + 1
+      valores.add(`${ano}-${String(mes).padStart(2, '0')}`)
+    }
+    lancamentos.forEach((item) => {
+      const partes = decomporMesBase(item.mes_base)
+      if (partes?.ano) valores.add(`${partes.ano}-${String(partes.mes).padStart(2, '0')}`)
+    })
+    return Array.from(valores).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) }))
+  }, [lancamentos])
 
   // Agrupar por data da sessão (ex: '31/out', '30/out', '28/out')
   const sessoesAgrupadas = useMemo(() => {
@@ -242,6 +275,10 @@ export function PokerScreen() {
     setModalDropdownVisible(true)
   }
 
+  const abrirDropdownFormulario = (tipo: 'cartao' | 'local') => {
+    setFormDropdownAberto((aberto) => aberto === tipo ? null : tipo)
+  }
+
   const selecionarOpcaoDropdown = async (valorSelecionado: string) => {
     if (!dropdownConfig) return
 
@@ -258,10 +295,9 @@ export function PokerScreen() {
       }
     })
 
-    setLancamentos(listaAtualizada)
     setModalDropdownVisible(false)
     setDropdownConfig(null)
-    await salvarLancamentosPoker(listaAtualizada)
+    setLancamentos(await salvarLancamentosPoker(listaAtualizada))
   }
 
   const cadastrarNovoNoDropdown = () => {
@@ -308,7 +344,8 @@ export function PokerScreen() {
   // ==========================================
   const abrirModalNovo = (dataSessaoSugerida?: string) => {
     setItemEditando(null)
-    setFormMesBase(mesFiltro === 'Todos' ? mesPokerHoje() : mesFiltro)
+    setFormDropdownAberto(null)
+    setFormMesBase(mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro)
     setFormDataCartao(dataSessaoSugerida || dataPokerHoje())
     setFormCartao('')
     setFormLocal('MonteCarlo')
@@ -320,6 +357,7 @@ export function PokerScreen() {
 
   const abrirModalEditar = (item: LancamentoPoker) => {
     setItemEditando(item)
+    setFormDropdownAberto(null)
     setFormMesBase(item.mes_base)
     setFormDataCartao(item.data_cartao)
     setFormCartao(item.cartao_nome)
@@ -369,7 +407,7 @@ export function PokerScreen() {
     }
 
     const itemSalvo: LancamentoPoker = {
-      id: itemEditando ? itemEditando.id : novoIdPoker(),
+      id: itemEditando ? itemEditando.id : gerarUuidPoker(),
       ordem: itemEditando?.ordem ?? Math.floor(Date.now() / 1000),
       mes_base: formMesBase.trim() || 'Novembro',
       data_cartao: formDataCartao.trim() || '31/out',
@@ -387,8 +425,7 @@ export function PokerScreen() {
     }
     listaAtualizada.sort(compararLancamentosRecentes)
 
-    setLancamentos(listaAtualizada)
-    await salvarLancamentosPoker(listaAtualizada)
+    setLancamentos(await salvarLancamentosPoker(listaAtualizada))
 
     if (manterAberto) {
       setFormValor('')
@@ -494,21 +531,18 @@ export function PokerScreen() {
           </View>
         </View>
 
-        {/* Filtro de Mês */}
+        {/* Filtro por ano e mês base */}
         <View style={styles.filtrosRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-            {['Novembro', 'Outubro', 'Todos'].map((m) => (
-              <TouchableOpacity
-                key={m}
-                style={[styles.filtroChip, mesFiltro === m && styles.filtroChipActive]}
-                onPress={() => setMesFiltro(m)}
-              >
-                <Text style={[styles.filtroChipText, mesFiltro === m && styles.filtroChipTextActive]}>
-                  {m}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <Text style={styles.inputLabel}>Mês base</Text>
+          <TouchableOpacity style={styles.filterMonthButton} onPress={() => setFiltroMesAberto((aberto) => !aberto)}>
+            <Ionicons name="calendar-outline" size={17} color={colors.primary} />
+            <Text style={styles.filterMonthButtonText}>{mesFiltro === 'Todos' ? 'Todos os meses' : rotuloMesBase(mesFiltro)}</Text>
+            <Ionicons name={filtroMesAberto ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+          </TouchableOpacity>
+          {filtroMesAberto && <ScrollView nestedScrollEnabled style={styles.monthOptionsList}>
+            <TouchableOpacity style={styles.formDropdownOption} onPress={() => { setMesFiltro('Todos'); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>Todos os meses</Text></TouchableOpacity>
+            {opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setMesFiltro(opcao.valor); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}
+          </ScrollView>}
         </View>
 
         {/* Legenda dos campos */}
@@ -541,12 +575,12 @@ export function PokerScreen() {
           const diaTravado = Boolean(diasBloqueados[dataSessao])
 
           return (
-            <View key={dataSessao} style={styles.sessaoCard}>
+            <View key={dataSessao} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
               {/* CABEÇALHO DO DIA */}
-              <View style={styles.sessaoTopBar}>
+              <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta]}>
                 <View style={styles.sessaoBadgeDia}>
-                  <Ionicons name="calendar-outline" size={15} color="#0284C7" />
-                  <Text style={styles.sessaoDiaTexto}>Sessão: {dataSessao}</Text>
+                  <Ionicons name={diaTravado ? 'lock-closed' : 'lock-open-outline'} size={15} color={diaTravado ? '#92400E' : '#166534'} />
+                  <Text style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>Sessão: {dataSessao}</Text>
                 </View>
                 <View style={styles.sessaoTopActions}>
                   <TouchableOpacity
@@ -643,9 +677,10 @@ export function PokerScreen() {
               {/* TABELA DE ENTRADAS (LINHAS UNIFORMES, SEM DISTORÇÃO) */}
               {/* ======================================================== */}
               <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingRight: 12 }} style={styles.tableScroll}>
-                <View style={[styles.tableContainer, { minWidth: 490 }]}>
+                <View style={[styles.tableContainer, { minWidth: 535 }]}>
                   {/* Header da Tabela */}
                   <View style={styles.tableHeader}>
+                    <Text style={[styles.th, { width: 42 }]}>Ação</Text>
                     <Text style={[styles.th, { width: 85 }]}>DataCartão</Text>
                     <Text style={[styles.th, { width: 100 }]}>Cartão</Text>
                     <Text style={[styles.th, { width: 110 }]}>Local</Text>
@@ -656,6 +691,15 @@ export function PokerScreen() {
                   {/* Linhas Uniformes de Entradas */}
                   {itens.map((item, idx) => (
                     <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
+                      <TouchableOpacity
+                        disabled={diaTravado}
+                        accessibilityRole="button"
+                        accessibilityLabel={diaTravado ? 'Lançamento protegido pelo cadeado do dia' : `Excluir lançamento de ${item.data_cartao}`}
+                        style={[styles.rowDeleteButton, diaTravado && styles.rowDeleteButtonDisabled]}
+                        onPress={() => setItemExcluirConfirmar(item)}
+                      >
+                        <Ionicons name={diaTravado ? 'lock-closed' : 'trash-outline'} size={15} color={diaTravado ? '#92400E' : '#DC2626'} />
+                      </TouchableOpacity>
                       {/* DataCartão */}
                       <Text style={[styles.tdMuted, { width: 85 }]}>{item.data_cartao}</Text>
 
@@ -707,6 +751,7 @@ export function PokerScreen() {
                           {item.taxa > 0 ? formatCurrency(item.taxa) : '-'}
                         </Text>
                       </TouchableOpacity>
+
                     </View>
                   ))}
                 </View>
@@ -803,7 +848,7 @@ export function PokerScreen() {
       {/* ======================================================== */}
       {/* MODAL DROPDOWN (CAMPOS VERDES: LOCAL OU CARTÃO) */}
       {/* ======================================================== */}
-      <Modal visible={modalDropdownVisible} transparent animationType="fade">
+      <Modal visible={modalDropdownVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setModalDropdownVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -916,12 +961,11 @@ export function PokerScreen() {
               <View style={styles.formRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Mês Base:</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ex: Novembro"
-                    value={formMesBase}
-                    onChangeText={setFormMesBase}
-                  />
+                  <TouchableOpacity style={styles.formMonthButton} onPress={() => setFormDropdownAberto((aberto) => aberto === 'mesBase' ? null : 'mesBase')}>
+                    <Text numberOfLines={1} style={styles.formMonthButtonText}>{rotuloMesBase(formMesBase)}</Text>
+                    <Ionicons name={formDropdownAberto === 'mesBase' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} />
+                  </TouchableOpacity>
+                  {formDropdownAberto === 'mesBase' && <ScrollView nestedScrollEnabled style={styles.monthOptionsList}>{opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setFormMesBase(opcao.valor); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}</ScrollView>}
                 </View>
 
                 <View style={{ flex: 1 }}>
@@ -938,22 +982,20 @@ export function PokerScreen() {
               <View style={styles.formRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Cartão (Opcional):</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ex: Nubank, PicPay"
-                    value={formCartao}
-                    onChangeText={setFormCartao}
-                  />
+                  <View style={styles.formPickerRow}>
+                    <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do cartão" value={formCartao} onChangeText={setFormCartao} />
+                    <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher cartão cadastrado" onPress={() => abrirDropdownFormulario('cartao')}><Ionicons name={formDropdownAberto === 'cartao' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
+                  </View>
+                  {formDropdownAberto === 'cartao' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{['', ...cartoesCadastrados].map((op) => <TouchableOpacity key={op || 'nenhum'} style={styles.formDropdownOption} onPress={() => { setFormCartao(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op || 'Nenhum cartão'}</Text></TouchableOpacity>)}</ScrollView>}
                 </View>
 
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Local:</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ex: MonteCarlo, H2"
-                    value={formLocal}
-                    onChangeText={setFormLocal}
-                  />
+                  <View style={styles.formPickerRow}>
+                    <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do clube" value={formLocal} onChangeText={setFormLocal} />
+                    <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher clube cadastrado" onPress={() => abrirDropdownFormulario('local')}><Ionicons name={formDropdownAberto === 'local' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
+                  </View>
+                  {formDropdownAberto === 'local' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{locaisCadastrados.map((op) => <TouchableOpacity key={op} style={styles.formDropdownOption} onPress={() => { setFormLocal(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op}</Text></TouchableOpacity>)}</ScrollView>}
                 </View>
               </View>
 
@@ -981,17 +1023,16 @@ export function PokerScreen() {
                 </View>
               </View>
 
-              <View style={styles.aplicarTaxaRow}>
+              <View style={[styles.aplicarTaxaRow, aplicarTaxa ? styles.aplicarTaxaRowAtiva : styles.aplicarTaxaRowInativa]}>
+                <View style={[styles.aplicarTaxaIcon, aplicarTaxa && styles.aplicarTaxaIconAtivo]}><Ionicons name="pricetag-outline" size={17} color={aplicarTaxa ? '#15803D' : colors.muted} /></View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.aplicarTaxaTitulo}>Aplicar taxa de {taxaPadraoPercentual}%</Text>
-                  <Text style={styles.aplicarTaxaSub}>Calculada automaticamente sobre o buy-in</Text>
+                  <Text style={styles.aplicarTaxaTitulo}>{aplicarTaxa ? 'Taxa ativada' : 'Taxa desativada'}</Text>
+                  <Text style={styles.aplicarTaxaSub}>{aplicarTaxa ? `${taxaPadraoPercentual}% calculados automaticamente sobre o buy-in` : 'Nenhuma taxa será adicionada'}</Text>
                 </View>
-                <Switch
-                  value={aplicarTaxa}
-                  onValueChange={handleToggleTaxa}
-                  trackColor={{ false: '#CBD5E1', true: colors.primary }}
-                  thumbColor="#fff"
-                />
+                <View style={styles.aplicarTaxaControle}>
+                  <Switch value={aplicarTaxa} onValueChange={handleToggleTaxa} trackColor={{ false: '#CBD5E1', true: '#22C55E' }} thumbColor="#fff" />
+                  <Text style={[styles.aplicarTaxaEstado, aplicarTaxa && styles.aplicarTaxaEstadoAtivo]}>{aplicarTaxa ? 'Sim' : 'Não'}</Text>
+                </View>
               </View>
 
               {!itemEditando && (
@@ -1036,6 +1077,19 @@ export function PokerScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+      <Modal visible={Boolean(itemExcluirConfirmar)} transparent animationType="fade" onRequestClose={() => setItemExcluirConfirmar(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
+            <Text style={styles.modalTitulo}>Excluir lançamento?</Text>
+            <Text style={styles.modalSub}>O lançamento de {itemExcluirConfirmar?.data_cartao} será removido permanentemente.</Text>
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={styles.btnCancelar} onPress={() => setItemExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const id = itemExcluirConfirmar?.id; setItemExcluirConfirmar(null); if (id) void excluirEntrada(id) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir lançamento</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   )
@@ -1235,6 +1289,23 @@ const styles = StyleSheet.create({
   filtroChipTextActive: {
     color: '#fff'
   },
+  filterMonthButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: colors.surface
+  },
+  filterMonthButtonText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700'
+  },
   legendaRow: {
     flexDirection: 'row',
     gap: 12,
@@ -1269,6 +1340,13 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3
   },
+  sessaoCardAberta: {
+    borderColor: '#86EFAC'
+  },
+  sessaoCardFechada: {
+    borderColor: '#FBBF24',
+    backgroundColor: '#FFFBEB'
+  },
   sessaoTopBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1278,6 +1356,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
+  },
+  sessaoTopBarAberta: {
+    backgroundColor: '#F0FDF4',
+    borderBottomColor: '#BBF7D0'
+  },
+  sessaoTopBarFechada: {
+    backgroundColor: '#FEF3C7',
+    borderBottomColor: '#FCD34D'
   },
   sessaoTopActions: {
     flexDirection: 'row',
@@ -1316,6 +1402,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: colors.text
+  },
+  sessaoDiaTextoFechada: {
+    color: '#78350F'
   },
   sessaoEntradasBadge: {
     fontSize: 11,
@@ -1493,6 +1582,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D97706'
   },
+  rowDeleteButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2'
+  },
+  rowDeleteButtonDisabled: {
+    backgroundColor: '#FEF3C7'
+  },
   sessaoBottomBar: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1667,6 +1767,72 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text
   },
+  formPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5
+  },
+  formPickerInput: {
+    flex: 1,
+    minWidth: 0
+  },
+  formPickerButton: {
+    width: 40,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 8
+  },
+  formMonthButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.background
+  },
+  formMonthButtonText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  monthOptionsList: {
+    maxHeight: 190,
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface
+  },
+  formDropdownOptions: {
+    maxHeight: 140,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface
+  },
+  formDropdownOption: {
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  formDropdownOptionText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600'
+  },
   inputTaxaSomenteLeitura: {
     backgroundColor: colors.surfaceHover,
     color: colors.textSecondary
@@ -1674,12 +1840,36 @@ const styles = StyleSheet.create({
   aplicarTaxaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
+    gap: 10,
+    paddingVertical: 11,
     paddingHorizontal: 12,
     marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1
+  },
+  aplicarTaxaRowAtiva: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0'
+  },
+  aplicarTaxaRowInativa: {
+    backgroundColor: colors.background,
+    borderColor: colors.border
+  },
+  aplicarTaxaIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: colors.background
+    backgroundColor: colors.surfaceHover
+  },
+  aplicarTaxaIconAtivo: {
+    backgroundColor: '#DCFCE7'
+  },
+  aplicarTaxaControle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 50
   },
   aplicarTaxaTitulo: {
     color: colors.text,
@@ -1690,6 +1880,15 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
     marginTop: 2
+  },
+  aplicarTaxaEstado: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: -2
+  },
+  aplicarTaxaEstadoAtivo: {
+    color: '#15803D'
   },
   inputAmarelo: {
     backgroundColor: '#FEF08A',
@@ -1738,6 +1937,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#DC2626'
+  },
+  deleteConfirmIcon: {
+    width: 46,
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 23,
+    backgroundColor: '#FEE2E2',
+    marginBottom: 12
+  },
+  btnExcluirConfirmar: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    backgroundColor: '#DC2626'
+  },
+  btnExcluirConfirmarTexto: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700'
   },
   avisoDiaTravado: {
     flex: 1,

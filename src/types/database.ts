@@ -1,5 +1,5 @@
 /**
- * Tipos do banco (escritos à mão, refletem as migrations até a 008).
+ * Tipos do banco (escritos à mão, refletem as migrations até a 011).
  *
  * Depois de `npx supabase db push`, prefira regenerar:
  *   npx supabase gen types typescript --linked > src/types/database.ts
@@ -43,6 +43,12 @@ export type Database = {
         Row: { usuario_id: string; inicio_dia: string; fim_dia: string; atualizado_em: string }
         Insert: { usuario_id: string; inicio_dia?: string; fim_dia?: string; atualizado_em?: string }
         Update: { usuario_id?: string; inicio_dia?: string; fim_dia?: string; atualizado_em?: string }
+        Relationships: Relacao[]
+      }
+      preferencias_acesso_modulos: {
+        Row: { usuario_id: string; todo_lista_ativo: boolean; agenda_ativo: boolean; financeiro_ativo: boolean; atualizado_em: string }
+        Insert: { usuario_id: string; todo_lista_ativo?: boolean; agenda_ativo?: boolean; financeiro_ativo?: boolean; atualizado_em?: string }
+        Update: { usuario_id?: string; todo_lista_ativo?: boolean; agenda_ativo?: boolean; financeiro_ativo?: boolean; atualizado_em?: string }
         Relationships: Relacao[]
       }
       poker_dias_bloqueados: {
