@@ -66,6 +66,9 @@ npx supabase gen types typescript --linked > src/types/database.ts
 | `009_modulo_financeiro_planilhas.sql` | Fechamento mensal (necessidade de caixa), controle de cartões MA e lançamentos MA com múltiplas entradas |
 | `010_poker_dias_bloqueados.sql` | Cadeado por dia de Poker e bloqueio de exclusão dos lançamentos enquanto travado |
 | `011_preferencias_acesso_modulos.sql` | Preferências por usuário para habilitar ou bloquear Todo List, Agenda e Financeiro |
+| `012_excluir_sessao_poker.sql` | Exclusão atômica de uma sessão Poker inteira, incluindo lançamentos e cash out, respeitando o cadeado |
+| `013_sessoes_poker_locais.sql` | Sessões de Poker por mês da fatura e data, com locais e exclusão segmentada |
+| `014_excluir_local_sessao_poker.sql` | Exclusão protegida de um local e seus lançamentos dentro da sessão |
 
 - Não edite migrations já aplicadas: mudanças entram como uma nova migration.
   Para as próximas, use `npx supabase migration new nome`, que gera o prefixo com timestamp

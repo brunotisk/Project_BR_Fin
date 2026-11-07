@@ -1,5 +1,5 @@
 /**
- * Tipos do banco (escritos à mão, refletem as migrations até a 011).
+ * Tipos do banco (escritos à mão, refletem as migrations até a 014).
  *
  * Depois de `npx supabase db push`, prefira regenerar:
  *   npx supabase gen types typescript --linked > src/types/database.ts
@@ -55,6 +55,12 @@ export type Database = {
         Row: { id: string; usuario_id: string; data_cartao: string; travado: boolean; atualizado_em: string }
         Insert: { id?: string; usuario_id?: string; data_cartao: string; travado?: boolean; atualizado_em?: string }
         Update: { id?: string; usuario_id?: string; data_cartao?: string; travado?: boolean; atualizado_em?: string }
+        Relationships: Relacao[]
+      }
+      poker_sessoes: {
+        Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em: string }
+        Insert: { id?: string; usuario_id?: string; mes_base: string; data_cartao: string; locais?: string[]; criado_em?: string }
+        Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; locais?: string[]; criado_em?: string }
         Relationships: Relacao[]
       }
       organizacao_itens: {
@@ -179,6 +185,9 @@ export type Database = {
       aceitar_convite_agenda: { Args: { p_convite_id: string }; Returns: undefined }
       atualizar_cor_agendas: { Args: { p_cor: string }; Returns: undefined }
       listar_membros_agenda: { Args: { p_agenda_id: string | null }; Returns: { usuario_id: string; nome: string; email: string | null; cor: string }[] }
+      salvar_sessao_poker: { Args: { p_mes_base: string; p_data_cartao: string; p_local: string }; Returns: string }
+      excluir_local_sessao_poker: { Args: { p_mes_base: string; p_data_cartao: string; p_local: string }; Returns: undefined }
+      excluir_sessao_poker: { Args: { p_mes_base: string; p_data_cartao: string }; Returns: undefined }
       hoje: { Args: Record<PropertyKey, never>; Returns: string }
       criar_transacao_parcelada: {
         Args: {

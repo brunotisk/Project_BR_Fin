@@ -138,6 +138,7 @@ export const LANCAMENTOS_POKER_INICIAIS: LancamentoPoker[] = [
 
 export type CashoutPorLocal = Record<string, number>
 export type CashoutsPokerMap = Record<string, CashoutPorLocal>
+export type SessaoPoker = { id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em?: string }
 
 export const CASHOUTS_INICIAIS: CashoutsPokerMap = {
   '31/out': {
@@ -169,6 +170,7 @@ const STORAGE_KEYS = {
   FECHAMENTO_PREFIX: '@fin_fechamento_',
   CARTOES_PREFIX: '@fin_cartoes_controle_',
   LANCAMENTOS: '@fin_poker_lancamentos',
+  SESSOES_POKER: '@fin_poker_sessoes',
   CASHOUTS: '@fin_poker_cashouts',
   DIAS_POKER_BLOQUEADOS: '@fin_poker_dias_bloqueados',
   TAXA_PADRAO: '@fin_poker_taxa_padrao',
@@ -464,6 +466,87 @@ export async function excluirLancamentoPoker(id: string): Promise<void> {
   }
   const local = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
   setLocalItem(STORAGE_KEYS.LANCAMENTOS, local.filter((item) => item.id !== id))
+}
+
+export async function excluirSessaoPoker(dataCartao: string, mesBase: string): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (usuarioId) {
+    const { error } = await (supabase as any).rpc('excluir_sessao_poker', { p_mes_base: mesBase, p_data_cartao: dataCartao })
+    if (error) throw error
+  }
+  const lancamentos = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
+  const lancamentosRestantes = lancamentos.filter((item) => item.data_cartao !== dataCartao || item.mes_base !== mesBase)
+  setLocalItem(STORAGE_KEYS.LANCAMENTOS, lancamentosRestantes)
+  const sessoes = getLocalItem<SessaoPoker[]>(STORAGE_KEYS.SESSOES_POKER, [])
+  const sessoesRestantes = sessoes.filter((sessao) => sessao.data_cartao !== dataCartao || sessao.mes_base !== mesBase)
+  setLocalItem(STORAGE_KEYS.SESSOES_POKER, sessoesRestantes)
+  const cashouts = carregarCashoutsPoker()
+  if (!lancamentosRestantes.some((item) => item.data_cartao === dataCartao) && !sessoesRestantes.some((sessao) => sessao.data_cartao === dataCartao)) delete cashouts[dataCartao]
+  setLocalItem(STORAGE_KEYS.CASHOUTS, cashouts)
+}
+
+export async function carregarSessoesPoker(): Promise<SessaoPoker[]> {
+  const locais = getLocalItem<SessaoPoker[]>(STORAGE_KEYS.SESSOES_POKER, [])
+  try {
+    const { data, error } = await (supabase as any).from('poker_sessoes').select('id, mes_base, data_cartao, locais, criado_em')
+    if (error) throw error
+    const remotas = (data || []) as SessaoPoker[]
+    const mapa = new Map(remotas.map((sessao) => [`${sessao.mes_base}|${sessao.data_cartao}`, sessao]))
+    locais.forEach((sessao) => { if (!mapa.has(`${sessao.mes_base}|${sessao.data_cartao}`)) mapa.set(`${sessao.mes_base}|${sessao.data_cartao}`, sessao) })
+    const resultado = Array.from(mapa.values())
+    setLocalItem(STORAGE_KEYS.SESSOES_POKER, resultado)
+    return resultado
+  } catch (err) {
+    console.warn('Não foi possível carregar as sessões de Poker:', err)
+    return locais
+  }
+}
+
+export async function salvarSessaoPoker(mesBase: string, dataCartao: string, local: string): Promise<SessaoPoker> {
+  const { data: userData } = await supabase.auth.getUser()
+  let id = gerarUuidPoker()
+  if (userData?.user?.id) {
+    const { data, error } = await (supabase as any).rpc('salvar_sessao_poker', { p_mes_base: mesBase, p_data_cartao: dataCartao, p_local: local })
+    if (error) throw error
+    id = data as string
+  }
+  const sessoes = getLocalItem<SessaoPoker[]>(STORAGE_KEYS.SESSOES_POKER, [])
+  const indice = sessoes.findIndex((sessao) => sessao.mes_base === mesBase && sessao.data_cartao === dataCartao)
+  const anterior = indice >= 0 ? sessoes[indice] : null
+  const sessao: SessaoPoker = {
+    id: userData?.user?.id ? id : anterior?.id || id,
+    mes_base: mesBase,
+    data_cartao: dataCartao,
+    locais: Array.from(new Set([...(anterior?.locais || []), local])),
+    ...(anterior?.criado_em ? { criado_em: anterior.criado_em } : {})
+  }
+  const atualizadas = indice >= 0 ? sessoes.map((item, i) => i === indice ? sessao : item) : [...sessoes, sessao]
+  setLocalItem(STORAGE_KEYS.SESSOES_POKER, atualizadas)
+  return sessao
+}
+
+export async function excluirLocalSessaoPoker(mesBase: string, dataCartao: string, local: string): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser()
+  if (userData?.user?.id) {
+    const { error } = await (supabase as any).rpc('excluir_local_sessao_poker', {
+      p_mes_base: mesBase, p_data_cartao: dataCartao, p_local: local
+    })
+    if (error) throw error
+  }
+  const lancamentos = getLocalItem<LancamentoPoker[]>(STORAGE_KEYS.LANCAMENTOS, LANCAMENTOS_POKER_INICIAIS)
+  setLocalItem(STORAGE_KEYS.LANCAMENTOS, lancamentos.filter((item) => item.data_cartao !== dataCartao || item.mes_base !== mesBase || item.local !== local))
+  const sessoes = getLocalItem<SessaoPoker[]>(STORAGE_KEYS.SESSOES_POKER, [])
+  setLocalItem(STORAGE_KEYS.SESSOES_POKER, sessoes.map((sessao) => sessao.data_cartao === dataCartao && sessao.mes_base === mesBase
+    ? { ...sessao, locais: sessao.locais.filter((nome) => nome !== local) }
+    : sessao))
+  const cashouts = carregarCashoutsPoker()
+  if (cashouts[dataCartao]) {
+    const restantes = { ...cashouts[dataCartao] }
+    delete restantes[local]
+    cashouts[dataCartao] = restantes
+    await salvarCashoutsDaSessao(dataCartao, restantes, mesBase)
+  }
 }
 
 export function carregarCashoutsPoker(): CashoutsPokerMap {

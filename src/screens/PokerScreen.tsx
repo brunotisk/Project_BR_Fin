@@ -24,6 +24,9 @@ import {
   carregarLancamentosPoker,
   carregarLocaisPoker,
   carregarTaxaPadraoPoker,
+  carregarSessoesPoker,
+  salvarSessaoPoker,
+  SessaoPoker,
   CashoutPorLocal,
   CashoutsPokerMap,
   LANCAMENTOS_POKER_INICIAIS,
@@ -32,6 +35,8 @@ import {
   definirDiaPokerBloqueado,
   gerarUuidPoker,
   salvarCashoutsDaSessao,
+  excluirLocalSessaoPoker as excluirLocalSessaoPokerService,
+  excluirSessaoPoker as excluirSessaoPokerService,
   salvarLancamentosPoker,
   salvarLocaisPoker,
   salvarTaxaPadraoPoker
@@ -59,8 +64,29 @@ function compararLancamentosRecentes(a: LancamentoPoker, b: LancamentoPoker) {
 }
 
 function dataPokerHoje() {
-  const [, mes, dia] = hojeISO().split('-').map(Number)
-  return `${dia}/${MESES_ABREVIADOS[mes - 1]}`
+  const [ano, mes, dia] = hojeISO().split('-').map(Number)
+  return `${dia}/${MESES_ABREVIADOS[mes - 1]}/${ano}`
+}
+
+function chaveMesDaDataCartao(data: string, mesBase: string) {
+  const match = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
+  if (!match) return normalizarMesBase(mesBase) || mesBaseHojeKey()
+  const anoBase = Number(normalizarMesBase(mesBase)?.slice(0, 4) || mesBaseHojeKey().slice(0, 4))
+  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : anoBase
+  const mes = MES_NUMERO[match[2]]
+  return mes ? `${ano}-${String(mes).padStart(2, '0')}` : mesBaseHojeKey()
+}
+
+function deslocarMes(valor: string, deslocamento: number) {
+  const [ano, mes] = valor.split('-').map(Number)
+  const indice = ano * 12 + mes - 1 + deslocamento
+  return `${Math.floor(indice / 12)}-${String((indice % 12) + 1).padStart(2, '0')}`
+}
+
+function dataCartaoSelecionada(dia: number, mesKey: string) {
+  const [, mes] = mesKey.split('-').map(Number)
+  const ano = Number(mesKey.slice(0, 4))
+  return `${dia}/${MESES_ABREVIADOS[mes - 1]}/${ano}`
 }
 
 function mesBaseHojeKey() {
@@ -110,6 +136,8 @@ export function PokerScreen() {
   const [diasBloqueados, setDiasBloqueados] = useState<Record<string, boolean>>({})
   const [taxaPadraoPercentual, setTaxaPadraoPercentual] = useState<number>(5)
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
+  const [sessoesSalvas, setSessoesSalvas] = useState<SessaoPoker[]>([])
+  const [novoLocalSessao, setNovoLocalSessao] = useState('')
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
 
   const [mesFiltro, setMesFiltro] = useState<string>('Todos')
@@ -119,8 +147,12 @@ export function PokerScreen() {
 
   // Modal para Nova Entrada / Edição de Linha
   const [modalNovoVisible, setModalNovoVisible] = useState(false)
+  const [modalNovaSessaoVisible, setModalNovaSessaoVisible] = useState(false)
+  const [alvoLancamento, setAlvoLancamento] = useState<{ mesBase: string; dataCartao: string; local: string } | null>(null)
   const [itemEditando, setItemEditando] = useState<LancamentoPoker | null>(null)
   const [itemExcluirConfirmar, setItemExcluirConfirmar] = useState<LancamentoPoker | null>(null)
+  const [sessaoExcluirConfirmar, setSessaoExcluirConfirmar] = useState<{ dataCartao: string; mesBase: string; itens: LancamentoPoker[] } | null>(null)
+  const [localSessaoExcluirConfirmar, setLocalSessaoExcluirConfirmar] = useState<{ dataCartao: string; mesBase: string; local: string; itens: LancamentoPoker[] } | null>(null)
 
   // Modal para Dropdown Verde (Local ou Cartão)
   const [modalDropdownVisible, setModalDropdownVisible] = useState(false)
@@ -143,13 +175,14 @@ export function PokerScreen() {
 
   // Formulário de Nova Entrada
   const [formMesBase, setFormMesBase] = useState(mesBaseHojeKey())
-  const [formDataCartao, setFormDataCartao] = useState('31/out')
+  const [formDataCartao, setFormDataCartao] = useState(dataPokerHoje())
+  const [calendarioAberto, setCalendarioAberto] = useState(false)
+  const [mesCalendario, setMesCalendario] = useState(mesBaseHojeKey())
   const [formCartao, setFormCartao] = useState('')
   const [formLocal, setFormLocal] = useState('MonteCarlo')
   const [formValor, setFormValor] = useState('')
   const [formTaxa, setFormTaxa] = useState('')
   const [aplicarTaxa, setAplicarTaxa] = useState(true)
-  const [manterAberto, setManterAberto] = useState(false)
 
   const carregar = useCallback(async () => {
     try {
@@ -159,6 +192,7 @@ export function PokerScreen() {
       setDiasBloqueados(await carregarDiasPokerBloqueados())
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setLocaisCadastrados(carregarLocaisPoker())
+      setSessoesSalvas(await carregarSessoesPoker())
     } catch (err) {
       console.warn('Erro ao carregar Poker:', err)
     } finally {
@@ -182,22 +216,37 @@ export function PokerScreen() {
   }, [lancamentos, mesFiltro])
 
   const opcoesMesBase = useMemo(() => [mesBaseHojeKey(), proximoMesBaseKey()].map((valor) => ({ valor, label: rotuloMesBase(valor) })), [])
-  const opcoesFiltroMesBase = useMemo(() => Array.from(new Set(
-    lancamentos.map((item) => normalizarMesBase(item.mes_base)).filter((valor): valor is string => Boolean(valor))
-  )).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) })), [lancamentos])
+  const opcoesFiltroMesBase = useMemo(() => Array.from(new Set([
+    ...lancamentos.map((item) => normalizarMesBase(item.mes_base)),
+    ...sessoesSalvas.map((sessao) => normalizarMesBase(sessao.mes_base))
+  ].filter((valor): valor is string => Boolean(valor)))).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) })), [lancamentos, sessoesSalvas])
+  const diasCalendario = useMemo(() => {
+    const [ano, mes] = mesCalendario.split('-').map(Number)
+    const primeiroDia = new Date(ano, mes - 1, 1).getDay()
+    const totalDias = new Date(ano, mes, 0).getDate()
+    return [...Array.from({ length: primeiroDia }, () => 0), ...Array.from({ length: totalDias }, (_, i) => i + 1)]
+  }, [mesCalendario])
 
   // Agrupar por data da sessão (ex: '31/out', '30/out', '28/out')
   const sessoesAgrupadas = useMemo(() => {
-    const map = new Map<string, LancamentoPoker[]>()
+    const map = new Map<string, { data: string; mesBase: string; itens: LancamentoPoker[]; locais: string[] }>()
     lancamentosFiltrados.forEach((item) => {
       const data = item.data_cartao || 'Sem Data'
-      if (!map.has(data)) map.set(data, [])
-      map.get(data)!.push(item)
+      const mesBase = normalizarMesBase(item.mes_base) || item.mes_base
+      const key = `${mesBase}|${data}`
+      if (!map.has(key)) map.set(key, { data, mesBase, itens: [], locais: [] })
+      map.get(key)!.itens.push(item)
+      if (item.local && !map.get(key)!.locais.includes(item.local)) map.get(key)!.locais.push(item.local)
     })
-    return Array.from(map.entries())
-      .map(([data, itens]) => [data, [...itens].sort(compararLancamentosRecentes)] as [string, LancamentoPoker[]])
-      .sort((a, b) => compararLancamentosRecentes(a[1][0], b[1][0]))
-  }, [lancamentosFiltrados])
+    sessoesSalvas.forEach((sessao) => {
+      if (mesFiltro !== 'Todos' && normalizarMesBase(sessao.mes_base) !== normalizarMesBase(mesFiltro)) return
+      const key = `${normalizarMesBase(sessao.mes_base) || sessao.mes_base}|${sessao.data_cartao}`
+      if (!map.has(key)) map.set(key, { data: sessao.data_cartao, mesBase: sessao.mes_base, itens: [], locais: [] })
+      sessao.locais.forEach((local) => { if (!map.get(key)!.locais.includes(local)) map.get(key)!.locais.push(local) })
+    })
+    return Array.from(map.values()).map((s) => ({ ...s, itens: s.itens.sort(compararLancamentosRecentes), locais: s.locais }))
+      .sort((a, b) => (dataPokerOrdenacao(b.data) - dataPokerOrdenacao(a.data)) || b.mesBase.localeCompare(a.mesBase))
+  }, [lancamentosFiltrados, sessoesSalvas, mesFiltro])
 
   // Totais Gerais
   const totalSacadoGeral = useMemo(() => {
@@ -209,8 +258,8 @@ export function PokerScreen() {
   }, [lancamentosFiltrados])
 
   const totalCashoutGeral = useMemo(() => {
-    return sessoesAgrupadas.reduce((acc, [dataKey]) => {
-      return acc + obterTotalCashoutSessao(cashouts[dataKey])
+    return sessoesAgrupadas.reduce((acc, sessao) => {
+      return acc + obterTotalCashoutSessao(cashouts[sessao.data])
     }, 0)
   }, [sessoesAgrupadas, cashouts])
 
@@ -258,6 +307,11 @@ export function PokerScreen() {
   }, [cashoutInputsPorLocal])
 
   const salvarCashoutsModal = async () => {
+    if (diasBloqueados[cashoutDataAlvo]) {
+      setModalCashoutVisible(false)
+      notify('Dia travado', 'Reabra o dia para editar o cash out.')
+      return
+    }
     const mapaSalvar: CashoutPorLocal = {}
     for (const [loc, valStr] of Object.entries(cashoutInputsPorLocal)) {
       const num = parseFloat((valStr || '').replace(',', '.')) || 0
@@ -286,6 +340,13 @@ export function PokerScreen() {
 
   const selecionarOpcaoDropdown = async (valorSelecionado: string) => {
     if (!dropdownConfig) return
+    const itemAlvo = lancamentos.find((item) => item.id === dropdownConfig.itemId)
+    if (itemAlvo && diasBloqueados[itemAlvo.data_cartao]) {
+      setModalDropdownVisible(false)
+      setDropdownConfig(null)
+      notify('Dia travado', 'Reabra o dia para editar este lançamento.')
+      return
+    }
 
     const listaAtualizada = lancamentos.map((it) => {
       if (it.id !== dropdownConfig.itemId) return it
@@ -350,23 +411,78 @@ export function PokerScreen() {
   const abrirModalNovo = (dataSessaoSugerida?: string, mesBaseSugerido?: string) => {
     setItemEditando(null)
     setFormDropdownAberto(null)
-    setFormMesBase(mesBaseSugerido ? normalizarMesBase(mesBaseSugerido) || mesBaseHojeKey() : mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro)
-    setFormDataCartao(dataSessaoSugerida || dataPokerHoje())
+    const baseInicial = mesBaseSugerido ? normalizarMesBase(mesBaseSugerido) || mesBaseHojeKey() : mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro
+    const dataInicial = dataSessaoSugerida || dataPokerHoje()
+    setFormMesBase(baseInicial)
+    setFormDataCartao(dataInicial)
+    setMesCalendario(chaveMesDaDataCartao(dataInicial, baseInicial))
+    setCalendarioAberto(false)
     setFormCartao('')
     setFormLocal('MonteCarlo')
+    setAlvoLancamento(dataSessaoSugerida ? { mesBase: baseInicial, dataCartao: dataInicial, local: 'MonteCarlo' } : null)
     setFormValor('')
     setAplicarTaxa(true)
     setFormTaxa('')
     setModalNovoVisible(true)
   }
 
+  const abrirNovaSessao = () => {
+    const base = mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro
+    setFormMesBase(base)
+    setFormDataCartao(dataPokerHoje())
+    setFormLocal(locaisCadastrados[0] || 'MonteCarlo')
+    setMesCalendario(mesBaseHojeKey())
+    setCalendarioAberto(false)
+    setModalNovaSessaoVisible(true)
+  }
+
+  const confirmarNovaSessao = async () => {
+    try {
+      const sessao = await salvarSessaoPoker(formMesBase, formDataCartao, formLocal)
+      setSessoesSalvas((anteriores) => {
+        const idx = anteriores.findIndex((s) => s.mes_base === sessao.mes_base && s.data_cartao === sessao.data_cartao)
+        return idx < 0 ? [...anteriores, sessao] : anteriores.map((s, i) => i === idx ? sessao : s)
+      })
+      setModalNovaSessaoVisible(false)
+      notify('Sessão criada', `Sessão aberta em ${formLocal}.`)
+    } catch (erro: any) { notify('Não foi possível criar a sessão', erro?.message || 'Tente novamente.') }
+  }
+
+  const adicionarLocalSessao = async (mesBase: string, dataCartao: string, local: string) => {
+    if (diasBloqueados[dataCartao]) { notify('Dia travado', 'Reabra o dia para adicionar um local.'); return }
+    try {
+      const sessao = await salvarSessaoPoker(mesBase, dataCartao, local)
+      setSessoesSalvas((anteriores) => {
+        const idx = anteriores.findIndex((s) => s.mes_base === sessao.mes_base && s.data_cartao === sessao.data_cartao)
+        return idx < 0 ? [...anteriores, sessao] : anteriores.map((s, i) => i === idx ? sessao : s)
+      })
+    } catch (erro: any) { notify('Não foi possível adicionar o local', erro?.message || 'Tente novamente.') }
+  }
+
+  const cadastrarLocalNaSessao = async (mesBase: string, dataCartao: string) => {
+    const local = novoLocalSessao.trim()
+    if (!local) return
+    const locais = Array.from(new Set([...locaisCadastrados, local]))
+    setLocaisCadastrados(locais)
+    await salvarLocaisPoker(locais)
+    await adicionarLocalSessao(mesBase, dataCartao, local)
+    setNovoLocalSessao('')
+  }
+
   const abrirModalEditar = (item: LancamentoPoker) => {
+    if (diasBloqueados[item.data_cartao]) {
+      notify('Dia travado', 'Reabra o dia para editar este lançamento.')
+      return
+    }
     setItemEditando(item)
     setFormDropdownAberto(null)
     setFormMesBase(normalizarMesBase(item.mes_base) || mesBaseHojeKey())
     setFormDataCartao(item.data_cartao)
+    setMesCalendario(chaveMesDaDataCartao(item.data_cartao, item.mes_base))
+    setCalendarioAberto(false)
     setFormCartao(item.cartao_nome)
     setFormLocal(item.local)
+    setAlvoLancamento({ mesBase: item.mes_base, dataCartao: item.data_cartao, local: item.local })
     setFormValor(item.valor > 0 ? item.valor.toString().replace('.', ',') : '')
     const temTaxa = Number(item.taxa) > 0
     setAplicarTaxa(temTaxa)
@@ -397,6 +513,11 @@ export function PokerScreen() {
   }
 
   const salvarEntrada = async () => {
+    const dataAlvo = itemEditando?.data_cartao || alvoLancamento?.dataCartao || formDataCartao
+    if (diasBloqueados[dataAlvo]) {
+      notify('Dia travado', 'Reabra o dia para editar este lançamento.')
+      return
+    }
     const v = parseFloat(formValor.replace(',', '.')) || 0
     let tx = 0
     if (aplicarTaxa) {
@@ -410,14 +531,18 @@ export function PokerScreen() {
       notify('Atenção', 'Informe um valor válido.')
       return
     }
+    if (!itemEditando && !formCartao.trim()) {
+      notify('Atenção', 'Selecione ou informe o cartão.')
+      return
+    }
 
     const itemSalvo: LancamentoPoker = {
       id: itemEditando ? itemEditando.id : gerarUuidPoker(),
       ordem: itemEditando?.ordem ?? Math.floor(Date.now() / 1000),
-      mes_base: formMesBase.trim() || 'Novembro',
-      data_cartao: formDataCartao.trim() || '31/out',
+      mes_base: itemEditando?.mes_base || alvoLancamento?.mesBase || formMesBase.trim() || 'Novembro',
+      data_cartao: itemEditando?.data_cartao || alvoLancamento?.dataCartao || formDataCartao.trim() || '31/out',
       cartao_nome: formCartao.trim(),
-      local: formLocal.trim() || 'MonteCarlo',
+      local: itemEditando?.local || alvoLancamento?.local || formLocal.trim() || 'MonteCarlo',
       valor: v,
       taxa: tx
     }
@@ -432,14 +557,8 @@ export function PokerScreen() {
 
     setLancamentos(await salvarLancamentosPoker(listaAtualizada))
 
-    if (manterAberto) {
-      setFormValor('')
-      setFormTaxa('')
-      notify('Adicionado', 'Entrada salva! Pode continuar digitando.')
-    } else {
-      setModalNovoVisible(false)
-      notify('Sucesso', 'Entrada salva com sucesso!')
-    }
+    setModalNovoVisible(false)
+    notify('Sucesso', 'Lançamento salvo na sessão.')
   }
 
   const excluirEntrada = async (id: string) => {
@@ -473,6 +592,44 @@ export function PokerScreen() {
     }
   }
 
+  const excluirSessaoCompleta = async (dataCartao: string, mesBase: string) => {
+    if (diasBloqueados[dataCartao]) {
+      notify('Dia travado', 'Reabra o dia antes de excluir a sessão.')
+      return
+    }
+    try {
+      await excluirSessaoPokerService(dataCartao, mesBase)
+      setLancamentos((anteriores) => anteriores.filter((item) => item.data_cartao !== dataCartao || normalizarMesBase(item.mes_base) !== normalizarMesBase(mesBase)))
+      setSessoesSalvas((anteriores) => anteriores.filter((sessao) => sessao.data_cartao !== dataCartao || normalizarMesBase(sessao.mes_base) !== normalizarMesBase(mesBase)))
+      setCashouts((anteriores) => {
+        const novos = { ...anteriores }
+        delete novos[dataCartao]
+        return novos
+      })
+      notify('Sessão excluída', 'Os lançamentos e o cash out deste dia foram removidos.')
+    } catch (erro: any) {
+      notify('Não foi possível excluir a sessão', erro?.message || 'Reabra o dia e tente novamente.')
+    }
+  }
+
+  const excluirLocalSessao = async (alvo: { dataCartao: string; mesBase: string; local: string; itens: LancamentoPoker[] }) => {
+    if (diasBloqueados[alvo.dataCartao]) {
+      notify('Dia travado', 'Reabra o dia para excluir este local.')
+      return
+    }
+    try {
+      await excluirLocalSessaoPokerService(alvo.mesBase, alvo.dataCartao, alvo.local)
+      setLancamentos((anteriores) => anteriores.filter((item) => item.data_cartao !== alvo.dataCartao || item.mes_base !== alvo.mesBase || item.local !== alvo.local))
+      setSessoesSalvas((anteriores) => anteriores.map((sessao) => sessao.data_cartao === alvo.dataCartao && sessao.mes_base === alvo.mesBase
+        ? { ...sessao, locais: sessao.locais.filter((local) => local !== alvo.local) }
+        : sessao))
+      setCashouts(carregarCashoutsPoker())
+      notify('Local excluído', `${alvo.local} e seus lançamentos foram removidos da sessão.`)
+    } catch (erro: any) {
+      notify('Não foi possível excluir o local', erro?.message || 'Reabra o dia e tente novamente.')
+    }
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -490,9 +647,8 @@ export function PokerScreen() {
               <Ionicons name="pricetag-outline" size={15} color="#854D0E" />
               <Text style={styles.btnTaxaTopoTexto}>{taxaPadraoPercentual}%</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btnNovoTopo} onPress={() => abrirModalNovo()}>
-              <Ionicons name="add" size={18} color="#fff" />
-              <Text style={styles.btnNovoTopoTexto}>Nova Entrada</Text>
+            <TouchableOpacity style={[styles.btnNovoTopo, { width: 42, justifyContent: 'center' }]} accessibilityRole="button" accessibilityLabel="Criar sessão" onPress={abrirNovaSessao}>
+              <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
@@ -565,7 +721,8 @@ export function PokerScreen() {
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
         {/* ======================================================== */}
-        {sessoesAgrupadas.map(([dataSessao, itens]) => {
+        {sessoesAgrupadas.map((sessao) => {
+          const { data: dataSessao, mesBase: mesBaseSessao, itens } = sessao
           const buyInSessao = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0)
           const taxaSessao = itens.reduce((s, it) => s + (Number(it.taxa) || 0), 0)
           const cashoutsDoDia = cashouts[dataSessao] || {}
@@ -580,11 +737,10 @@ export function PokerScreen() {
           const diaTravado = Boolean(diasBloqueados[dataSessao])
 
           return (
-            <View key={dataSessao} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
+            <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
               {/* CABEÇALHO DO DIA */}
               <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta]}>
                 <View style={styles.sessaoBadgeDia}>
-                  <Ionicons name={diaTravado ? 'lock-closed' : 'lock-open-outline'} size={15} color={diaTravado ? '#92400E' : '#166534'} />
                   <Text style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>Sessão: {dataSessao}</Text>
                 </View>
                 <View style={styles.sessaoTopActions}>
@@ -594,11 +750,19 @@ export function PokerScreen() {
                     style={[styles.sessaoLockButton, diaTravado && styles.sessaoLockButtonActive]}
                     onPress={() => void alternarBloqueioDia(dataSessao, !diaTravado)}
                   >
-                    <Ionicons name={diaTravado ? 'lock-closed' : 'lock-open-outline'} size={14} color={diaTravado ? '#B45309' : colors.textSecondary} />
                     <Text style={[styles.sessaoLockText, diaTravado && styles.sessaoLockTextActive]}>{diaTravado ? 'Reabrir' : 'Travar dia'}</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    disabled={diaTravado}
+                    accessibilityRole="button"
+                    accessibilityLabel={diaTravado ? 'Reabra o dia para excluir a sessão' : `Excluir a sessão ${dataSessao}`}
+                    style={[styles.sessionDeleteButton, diaTravado && styles.sessionDeleteButtonDisabled]}
+                    onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
+                  >
+                    <Ionicons name="trash-outline" size={15} color={diaTravado ? '#92400E' : '#DC2626'} />
+                  </TouchableOpacity>
                   <Text style={styles.sessaoEntradasBadge}>
-                    {itens.length} {itens.length === 1 ? 'entrada' : 'entradas'}
+                    {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
                   </Text>
                 </View>
               </View>
@@ -629,11 +793,12 @@ export function PokerScreen() {
                   <View style={[styles.resumoGridRow, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={styles.cashoutMiniBoxAmarelo}
+                      disabled={diaTravado}
                       onPress={() => abrirModalCashout(dataSessao, itens)}
                     >
                       <View style={styles.cashoutMiniTop}>
                         <Text style={styles.cashoutMiniLabel}>CASHout</Text>
-                        <Ionicons name="pencil" size={12} color="#854D0E" />
+                        {!diaTravado && <Ionicons name="pencil" size={12} color="#854D0E" />}
                       </View>
                       <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cashoutMiniValor}>
                         {formatCurrency(cashoutTotalSessao)}
@@ -643,7 +808,7 @@ export function PokerScreen() {
                           {detalhesLocais}
                         </Text>
                       ) : (
-                        <Text style={styles.cashoutDetalhesTexto}>Toque p/ editar por local</Text>
+                        <Text style={styles.cashoutDetalhesTexto}>{diaTravado ? 'Dia travado' : 'Toque p/ editar por local'}</Text>
                       )}
                     </TouchableOpacity>
 
@@ -673,106 +838,35 @@ export function PokerScreen() {
               </View>
 
               {/* Dica de rolagem lateral para celular */}
-              <View style={styles.tableDicaContainer}>
-                <Ionicons name="swap-horizontal" size={12} color={colors.muted} />
-                <Text style={styles.tableDicaTexto}>Deslize lateralmente para ver todas as colunas</Text>
-              </View>
-
-              {/* ======================================================== */}
-              {/* TABELA DE ENTRADAS (LINHAS UNIFORMES, SEM DISTORÇÃO) */}
-              {/* ======================================================== */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ paddingRight: 12 }} style={styles.tableScroll}>
-                <View style={[styles.tableContainer, { minWidth: 535 }]}>
-                  {/* Header da Tabela */}
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.th, { width: 42 }]}>Ação</Text>
-                    <Text style={[styles.th, { width: 85 }]}>DataCartão</Text>
-                    <Text style={[styles.th, { width: 100 }]}>Cartão</Text>
-                    <Text style={[styles.th, { width: 110 }]}>Local</Text>
-                    <Text style={[styles.th, styles.thRight, { width: 100 }]}>Valor</Text>
-                    <Text style={[styles.th, styles.thRight, { width: 85 }]}>Taxa</Text>
+              {sessao.locais.map((local) => {
+                const itensLocal = itens.filter((item) => item.local === local)
+                return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ fontWeight: '800', color: colors.text }}>{local}</Text><TouchableOpacity disabled={diaTravado} accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })} style={[styles.rowDeleteButton, diaTravado && { opacity: 0.35 }]}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity></View>
+                    <TouchableOpacity disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
+                      <Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Lançamento</Text>
+                    </TouchableOpacity>
                   </View>
-
-                  {/* Linhas Uniformes de Entradas */}
-                  {itens.map((item, idx) => (
-                    <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
-                      <TouchableOpacity
-                        disabled={diaTravado}
-                        accessibilityRole="button"
-                        accessibilityLabel={diaTravado ? 'Lançamento protegido pelo cadeado do dia' : `Excluir lançamento de ${item.data_cartao}`}
-                        style={[styles.rowDeleteButton, diaTravado && styles.rowDeleteButtonDisabled]}
-                        onPress={() => setItemExcluirConfirmar(item)}
-                      >
-                        <Ionicons name={diaTravado ? 'lock-closed' : 'trash-outline'} size={15} color={diaTravado ? '#92400E' : '#DC2626'} />
-                      </TouchableOpacity>
-                      {/* DataCartão */}
-                      <Text style={[styles.tdMuted, { width: 85 }]}>{item.data_cartao}</Text>
-
-                      {/* Cartão (DROPDOWN VERDE) */}
-                      <TouchableOpacity
-                        style={[styles.tdDropdownVerde, { width: 100 }]}
-                        onPress={() => abrirDropdown(item.id, 'cartao')}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.tdDropdownTexto,
-                            !item.cartao_nome && { color: '#94A3B8', fontStyle: 'italic' }
-                          ]}
-                        >
-                          {item.cartao_nome || 'Selecione'}
-                        </Text>
-                        <Ionicons name="chevron-down" size={12} color="#15803D" />
-                      </TouchableOpacity>
-
-                      {/* Local (DROPDOWN VERDE) */}
-                      <TouchableOpacity
-                        style={[styles.tdDropdownVerde, { width: 110 }]}
-                        onPress={() => abrirDropdown(item.id, 'local')}
-                      >
-                        <Text numberOfLines={1} style={styles.tdDropdownTexto}>
-                          {item.local}
-                        </Text>
-                        <Ionicons name="chevron-down" size={12} color="#15803D" />
-                      </TouchableOpacity>
-
-                      {/* Valor (CAMPO AMARELO - ENTRADA) */}
-                      <TouchableOpacity
-                        style={[styles.tdEntradaAmarela, { width: 100 }]}
-                        onPress={() => abrirModalEditar(item)}
-                      >
-                        <Text style={styles.tdEntradaValor}>
-                          {formatCurrency(item.valor)}
-                        </Text>
-                        <Ionicons name="pencil" size={11} color="#854D0E" />
-                      </TouchableOpacity>
-
-                      {/* Taxa */}
-                      <TouchableOpacity
-                        style={[styles.tdTaxaWrapper, { width: 85 }]}
-                        onPress={() => abrirModalEditar(item)}
-                      >
-                        <Text style={styles.tdTaxa}>
-                          {item.taxa > 0 ? formatCurrency(item.taxa) : '-'}
-                        </Text>
-                      </TouchableOpacity>
-
+                  <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.th, { flex: 1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: 90 }]}>Valor</Text><Text style={[styles.th, styles.thRight, { width: 80 }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
                     </View>
-                  ))}
+                    {itensLocal.map((item, idx) => <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
+                      {diaTravado ? <Text numberOfLines={1} style={[styles.tdDropdownTexto, { flex: 1, paddingHorizontal: 8 }]}>{item.cartao_nome || '—'}</Text> : <TouchableOpacity style={[styles.tdDropdownVerde, { flex: 1 }]} onPress={() => abrirDropdown(item.id, 'cartao')}><Text numberOfLines={1} style={styles.tdDropdownTexto}>{item.cartao_nome || 'Selecione cartão'}</Text><Ionicons name="chevron-down" size={12} color="#15803D" /></TouchableOpacity>}
+                      {diaTravado ? <Text style={[styles.tdEntradaValor, { width: 90, textAlign: 'right', paddingHorizontal: 8 }]}>{formatCurrency(item.valor)}</Text> : <TouchableOpacity style={[styles.tdEntradaAmarela, { width: 90 }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdEntradaValor}>{formatCurrency(item.valor)}</Text></TouchableOpacity>}
+                      {diaTravado ? <Text style={[styles.tdTaxa, { width: 80, textAlign: 'right', paddingHorizontal: 8 }]}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text> : <TouchableOpacity style={[styles.tdTaxaWrapper, { width: 80 }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdTaxa}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text></TouchableOpacity>}
+                      {diaTravado ? <View style={{ width: 42 }} /> : <TouchableOpacity accessibilityLabel="Excluir lançamento" style={styles.rowDeleteButton} onPress={() => setItemExcluirConfirmar(item)}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity>}
+                    </View>)}
+                    {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
+                  </View>
                 </View>
-              </ScrollView>
-
-              {/* Barra inferior com botão para adicionar entrada na sessão */}
+              })}
               <View style={styles.sessaoBottomBar}>
-                <TouchableOpacity
-                  style={styles.btnAdicionarNaSessao}
-                  onPress={() => abrirModalNovo(dataSessao, itens[0]?.mes_base)}
-                >
-                  <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
-                  <Text style={styles.btnAdicionarNaSessaoTexto}>
-                    + Adicionar entrada em {dataSessao}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.inputLabel}>Adicionar outro local</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {locaisCadastrados.filter((local) => !sessao.locais.includes(local)).map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>)}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput style={[styles.input, { flex: 1, minHeight: 40 }]} value={novoLocalSessao} onChangeText={setNovoLocalSessao} placeholder="Novo local" editable={!diaTravado} /><TouchableOpacity disabled={diaTravado || !novoLocalSessao.trim()} style={[styles.btnAdicionarNaSessao, (diaTravado || !novoLocalSessao.trim()) && { opacity: 0.5 }]} onPress={() => void cadastrarLocalNaSessao(mesBaseSessao, dataSessao)}><Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Adicionar</Text></TouchableOpacity></View>
               </View>
             </View>
           )
@@ -788,6 +882,24 @@ export function PokerScreen() {
       {/* ======================================================== */}
       {/* MODAL CASHOUT POR LOCAL (ABRE UMA LINHA POR LOCAL E SOMA) */}
       {/* ======================================================== */}
+      <Modal visible={modalNovaSessaoVisible} transparent animationType="fade" onRequestClose={() => setModalNovaSessaoVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}><View><Text style={styles.modalTitulo}>Nova sessão</Text><Text style={styles.modalSub}>Defina o mês da fatura, a data e o primeiro local.</Text></View><TouchableOpacity onPress={() => setModalNovaSessaoVisible(false)}><Ionicons name="close" size={22} color={colors.muted} /></TouchableOpacity></View>
+            <ScrollView>
+              <Text style={styles.inputLabel}>Mês Fatura</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={[styles.btnAdicionarNaSessao, formMesBase === opcao.valor && { backgroundColor: '#DCFCE7' }]} onPress={() => setFormMesBase(opcao.valor)}><Text style={styles.btnAdicionarNaSessaoTexto}>{opcao.label}</Text></TouchableOpacity>)}</View>
+              <Text style={styles.inputLabel}>Data Lançamento</Text>
+              <TouchableOpacity style={styles.formMonthButton} onPress={() => { setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase)); setCalendarioAberto(!calendarioAberto) }}><Text style={styles.formMonthButtonText}>{formDataCartao}</Text><Ionicons name="calendar-outline" size={16} color={colors.primary} /></TouchableOpacity>
+              {calendarioAberto && <View style={styles.calendarPanel}><View style={styles.calendarHeader}><TouchableOpacity style={styles.calendarNavButton} onPress={() => setMesCalendario((mes) => deslocarMes(mes, -1))}><Ionicons name="chevron-back" size={18} color={colors.primary} /></TouchableOpacity><Text style={styles.calendarMonthTitle}>{rotuloMesBase(mesCalendario)}</Text><TouchableOpacity style={styles.calendarNavButton} onPress={() => setMesCalendario((mes) => deslocarMes(mes, 1))}><Ionicons name="chevron-forward" size={18} color={colors.primary} /></TouchableOpacity></View><View style={styles.calendarGrid}>{['D','S','T','Q','Q','S','S'].map((d,i)=><Text key={`weekday-${i}`} style={styles.calendarWeekday}>{d}</Text>)}{diasCalendario.map((dia,i)=>!dia?<View key={`empty-${i}`} style={styles.calendarDayEmpty}/>:<TouchableOpacity key={dia} style={[styles.calendarDayButton, formDataCartao===dataCartaoSelecionada(dia,mesCalendario)&&styles.calendarDayButtonSelected]} onPress={()=>{setFormDataCartao(dataCartaoSelecionada(dia,mesCalendario));setCalendarioAberto(false)}}><Text style={styles.calendarDayText}>{dia}</Text></TouchableOpacity>)}</View><TouchableOpacity style={styles.calendarTodayButton} onPress={()=>{setFormDataCartao(dataPokerHoje());setMesCalendario(mesBaseHojeKey());setCalendarioAberto(false)}}><Text style={styles.calendarTodayButtonText}>Voltar para hoje</Text></TouchableOpacity></View>}
+              <Text style={[styles.inputLabel, { marginTop: 14 }]}>Local</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{locaisCadastrados.map((local) => <TouchableOpacity key={local} style={[styles.btnAdicionarNaSessao, formLocal === local && { backgroundColor: '#DCFCE7' }]} onPress={() => setFormLocal(local)}><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>)}</View>
+              <View style={styles.modalBotoes}><TouchableOpacity style={styles.btnCancelar} onPress={() => setModalNovaSessaoVisible(false)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity><TouchableOpacity style={styles.btnSalvar} onPress={() => void confirmarNovaSessao()}><Text style={styles.btnSalvarTexto}>Criar sessão</Text></TouchableOpacity></View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={modalCashoutVisible} transparent animationType="fade">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -963,6 +1075,7 @@ export function PokerScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
+              {(!alvoLancamento && !itemEditando) && <>
               <View style={styles.formRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Mês Base:</Text>
@@ -975,18 +1088,37 @@ export function PokerScreen() {
 
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Data Cartão:</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ex: 31/out"
-                    value={formDataCartao}
-                    onChangeText={setFormDataCartao}
-                  />
+                  <TouchableOpacity style={styles.formMonthButton} onPress={() => {
+                    setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase))
+                    setCalendarioAberto((aberto) => !aberto)
+                  }}>
+                    <Text numberOfLines={1} style={styles.formMonthButtonText}>{formDataCartao}</Text>
+                    <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+                  </TouchableOpacity>
                 </View>
               </View>
 
+              {calendarioAberto && <View style={styles.calendarPanel}>
+                <View style={styles.calendarHeader}>
+                  <TouchableOpacity style={styles.calendarNavButton} accessibilityLabel="Mês anterior" onPress={() => setMesCalendario((mes) => deslocarMes(mes, -1))}><Ionicons name="chevron-back" size={18} color={colors.primary} /></TouchableOpacity>
+                  <Text style={styles.calendarMonthTitle}>{rotuloMesBase(mesCalendario)}</Text>
+                  <TouchableOpacity style={styles.calendarNavButton} accessibilityLabel="Próximo mês" onPress={() => setMesCalendario((mes) => deslocarMes(mes, 1))}><Ionicons name="chevron-forward" size={18} color={colors.primary} /></TouchableOpacity>
+                </View>
+                <View style={styles.calendarGrid}>
+                  {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((dia, indice) => <Text key={`sem-${indice}`} style={styles.calendarWeekday}>{dia}</Text>)}
+                  {diasCalendario.map((dia, indice) => {
+                    if (!dia) return <View key={`vazio-${indice}`} style={styles.calendarDayEmpty} />
+                    const selecionado = mesCalendario === chaveMesDaDataCartao(formDataCartao, formMesBase) && Number(formDataCartao.split(/[\/-]/)[0]) === dia
+                    return <TouchableOpacity key={`dia-${dia}`} style={[styles.calendarDayButton, selecionado && styles.calendarDayButtonSelected]} onPress={() => { setFormDataCartao(dataCartaoSelecionada(dia, mesCalendario)); setCalendarioAberto(false) }}><Text style={[styles.calendarDayText, selecionado && styles.calendarDayTextSelected]}>{dia}</Text></TouchableOpacity>
+                  })}
+                </View>
+                <TouchableOpacity style={styles.calendarTodayButton} onPress={() => { setFormDataCartao(dataPokerHoje()); setMesCalendario(mesBaseHojeKey()); setCalendarioAberto(false) }}><Text style={styles.calendarTodayButtonText}>Voltar para hoje</Text></TouchableOpacity>
+              </View>}
+              </>}
+
               <View style={styles.formRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Cartão (Opcional):</Text>
+                  <Text style={styles.inputLabel}>Cartão:</Text>
                   <View style={styles.formPickerRow}>
                     <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do cartão" value={formCartao} onChangeText={setFormCartao} />
                     <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher cartão cadastrado" onPress={() => abrirDropdownFormulario('cartao')}><Ionicons name={formDropdownAberto === 'cartao' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
@@ -994,14 +1126,14 @@ export function PokerScreen() {
                   {formDropdownAberto === 'cartao' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{['', ...cartoesCadastrados].map((op) => <TouchableOpacity key={op || 'nenhum'} style={styles.formDropdownOption} onPress={() => { setFormCartao(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op || 'Nenhum cartão'}</Text></TouchableOpacity>)}</ScrollView>}
                 </View>
 
-                <View style={{ flex: 1 }}>
+                {(!alvoLancamento && !itemEditando) && <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Local:</Text>
                   <View style={styles.formPickerRow}>
                     <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do clube" value={formLocal} onChangeText={setFormLocal} />
                     <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher clube cadastrado" onPress={() => abrirDropdownFormulario('local')}><Ionicons name={formDropdownAberto === 'local' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
                   </View>
                   {formDropdownAberto === 'local' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{locaisCadastrados.map((op) => <TouchableOpacity key={op} style={styles.formDropdownOption} onPress={() => { setFormLocal(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op}</Text></TouchableOpacity>)}</ScrollView>}
-                </View>
+                </View>}
               </View>
 
               <View style={styles.formRow}>
@@ -1040,22 +1172,6 @@ export function PokerScreen() {
                 </View>
               </View>
 
-              {!itemEditando && (
-                <TouchableOpacity
-                  style={styles.checkContinuar}
-                  onPress={() => setManterAberto(!manterAberto)}
-                >
-                  <Ionicons
-                    name={manterAberto ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color={colors.primary}
-                  />
-                  <Text style={styles.checkContinuarTexto}>
-                    Continuar adicionando entradas sem fechar
-                  </Text>
-                </TouchableOpacity>
-              )}
-
               <View style={styles.modalBotoes}>
                 {itemEditando && !diasBloqueados[itemEditando.data_cartao] && (
                   <TouchableOpacity
@@ -1092,6 +1208,32 @@ export function PokerScreen() {
             <View style={styles.modalBotoes}>
               <TouchableOpacity style={styles.btnCancelar} onPress={() => setItemExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const id = itemExcluirConfirmar?.id; setItemExcluirConfirmar(null); if (id) void excluirEntrada(id) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir lançamento</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(sessaoExcluirConfirmar)} transparent animationType="fade" onRequestClose={() => setSessaoExcluirConfirmar(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
+            <Text style={styles.modalTitulo}>Excluir a sessão inteira?</Text>
+            <Text style={styles.modalSub}>Serão removidos {sessaoExcluirConfirmar?.itens.length || 0} lançamentos e o cash out de {sessaoExcluirConfirmar?.dataCartao}. Essa ação não pode ser desfeita.</Text>
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={styles.btnCancelar} onPress={() => setSessaoExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const alvo = sessaoExcluirConfirmar; setSessaoExcluirConfirmar(null); if (alvo) void excluirSessaoCompleta(alvo.dataCartao, alvo.mesBase) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir sessão</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(localSessaoExcluirConfirmar)} transparent animationType="fade" onRequestClose={() => setLocalSessaoExcluirConfirmar(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
+            <Text style={styles.modalTitulo}>Excluir local da sessão?</Text>
+            <Text style={styles.modalSub}>O local {localSessaoExcluirConfirmar?.local} e {localSessaoExcluirConfirmar?.itens.length || 0} lançamentos serão removidos desta sessão.</Text>
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={styles.btnCancelar} onPress={() => setLocalSessaoExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const alvo = localSessaoExcluirConfirmar; setLocalSessaoExcluirConfirmar(null); if (alvo) void excluirLocalSessao(alvo) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir local</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -1388,6 +1530,20 @@ const styles = StyleSheet.create({
   },
   sessaoLockButtonActive: {
     borderColor: '#F59E0B',
+    backgroundColor: '#FEF3C7'
+  },
+  sessionDeleteButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 8,
+    backgroundColor: '#FEF2F2'
+  },
+  sessionDeleteButtonDisabled: {
+    borderColor: '#FCD34D',
     backgroundColor: '#FEF3C7'
   },
   sessaoLockText: {
@@ -1817,6 +1973,80 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     backgroundColor: colors.surface
+  },
+  calendarPanel: {
+    marginBottom: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surface
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8
+  },
+  calendarNavButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: colors.primaryLight
+  },
+  calendarMonthTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start'
+  },
+  calendarWeekday: {
+    width: '14.2857%',
+    paddingVertical: 5,
+    textAlign: 'center',
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  calendarDayEmpty: {
+    width: '14.2857%',
+    height: 38
+  },
+  calendarDayButton: {
+    width: '14.2857%',
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 19
+  },
+  calendarDayButtonSelected: {
+    backgroundColor: colors.primary
+  },
+  calendarDayText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  calendarDayTextSelected: {
+    color: '#fff',
+    fontWeight: '800'
+  },
+  calendarTodayButton: {
+    alignSelf: 'center',
+    marginTop: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  calendarTodayButtonText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700'
   },
   formDropdownOptions: {
     maxHeight: 140,
