@@ -361,9 +361,14 @@ export function PokerScreen() {
       }
     })
 
-    setModalDropdownVisible(false)
-    setDropdownConfig(null)
-    setLancamentos(await salvarLancamentosPoker(listaAtualizada))
+    try {
+      const salvos = await salvarLancamentosPoker(listaAtualizada, true)
+      setLancamentos(salvos)
+      setModalDropdownVisible(false)
+      setDropdownConfig(null)
+    } catch (erro: any) {
+      notify('Alteração não salva', erro?.message || 'Não foi possível sincronizar com o banco. Tente novamente.')
+    }
   }
 
   const cadastrarNovoNoDropdown = () => {
@@ -555,10 +560,14 @@ export function PokerScreen() {
     }
     listaAtualizada.sort(compararLancamentosRecentes)
 
-    setLancamentos(await salvarLancamentosPoker(listaAtualizada))
-
-    setModalNovoVisible(false)
-    notify('Sucesso', 'Lançamento salvo na sessão.')
+    try {
+      const salvos = await salvarLancamentosPoker(listaAtualizada, true)
+      setLancamentos(salvos)
+      setModalNovoVisible(false)
+      notify('Sucesso', 'Lançamento salvo na sessão.')
+    } catch (erro: any) {
+      notify('Alteração não salva', erro?.message || 'Não foi possível sincronizar com o banco. Tente novamente.')
+    }
   }
 
   const excluirEntrada = async (id: string) => {
@@ -842,14 +851,14 @@ export function PokerScreen() {
                 const itensLocal = itens.filter((item) => item.local === local)
                 return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
                   <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ fontWeight: '800', color: colors.text }}>{local}</Text><TouchableOpacity disabled={diaTravado} accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })} style={[styles.rowDeleteButton, diaTravado && { opacity: 0.35 }]}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity></View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ fontWeight: '800', color: colors.text }}>{local} - Buy-in: {formatCurrency(itensLocal.reduce((total, item) => total + (Number(item.valor) || 0), 0))}</Text><TouchableOpacity disabled={diaTravado} accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })} style={[styles.rowDeleteButton, diaTravado && { opacity: 0.35 }]}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity></View>
                     <TouchableOpacity disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
                       <Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Lançamento</Text>
                     </TouchableOpacity>
                   </View>
                   <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
                     <View style={styles.tableHeader}>
-                      <Text style={[styles.th, { flex: 1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: 90 }]}>Valor</Text><Text style={[styles.th, styles.thRight, { width: 80 }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
+                      <Text style={[styles.th, { flex: 1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: 90 }]}>Buy-in</Text><Text style={[styles.th, styles.thRight, { width: 80 }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
                     </View>
                     {itensLocal.map((item, idx) => <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
                       {diaTravado ? <Text numberOfLines={1} style={[styles.tdDropdownTexto, { flex: 1, paddingHorizontal: 8 }]}>{item.cartao_nome || '—'}</Text> : <TouchableOpacity style={[styles.tdDropdownVerde, { flex: 1 }]} onPress={() => abrirDropdown(item.id, 'cartao')}><Text numberOfLines={1} style={styles.tdDropdownTexto}>{item.cartao_nome || 'Selecione cartão'}</Text><Ionicons name="chevron-down" size={12} color="#15803D" /></TouchableOpacity>}

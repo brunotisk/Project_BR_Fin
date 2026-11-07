@@ -402,9 +402,8 @@ export async function carregarLancamentosPoker(mesBase?: string): Promise<Lancam
     : LANCAMENTOS_POKER_INICIAIS
 }
 
-export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<LancamentoPoker[]> {
+export async function salvarLancamentosPoker(itens: LancamentoPoker[], exigirConfirmacaoRemota = false): Promise<LancamentoPoker[]> {
   const registrosNormalizados = itens.map((item) => UUID_POKER.test(item.id) ? item : { ...item, id: gerarUuidPoker() })
-  setLocalItem(STORAGE_KEYS.LANCAMENTOS, registrosNormalizados)
 
   try {
     const { data: userData } = await supabase.auth.getUser()
@@ -417,12 +416,18 @@ export async function salvarLancamentosPoker(itens: LancamentoPoker[]): Promise<
         ordem: item.ordem ?? index
       }))
       if (records.length > 0) {
-        const { error } = await (supabase as any).from('lancamentos_ma').upsert(records)
+        const { data, error } = await (supabase as any).from('lancamentos_ma').upsert(records).select('id')
         if (error) throw error
+        if (exigirConfirmacaoRemota && (data?.length || 0) !== records.length) {
+          throw new Error('O Supabase não confirmou o salvamento de todos os lançamentos.')
+        }
       }
     }
+    setLocalItem(STORAGE_KEYS.LANCAMENTOS, registrosNormalizados)
   } catch (err) {
     console.warn('Erro ao salvar lançamentos poker no Supabase (mantido local):', err)
+    if (exigirConfirmacaoRemota) throw err
+    setLocalItem(STORAGE_KEYS.LANCAMENTOS, registrosNormalizados)
   }
   return registrosNormalizados
 }
