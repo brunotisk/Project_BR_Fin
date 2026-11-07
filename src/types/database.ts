@@ -1,5 +1,5 @@
 /**
- * Tipos do banco (escritos à mão, refletem as migrations até a 014).
+ * Tipos do banco (escritos à mão, refletem as migrations até a 015).
  *
  * Depois de `npx supabase db push`, prefira regenerar:
  *   npx supabase gen types typescript --linked > src/types/database.ts
@@ -61,6 +61,12 @@ export type Database = {
         Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em: string }
         Insert: { id?: string; usuario_id?: string; mes_base: string; data_cartao: string; locais?: string[]; criado_em?: string }
         Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; locais?: string[]; criado_em?: string }
+        Relationships: Relacao[]
+      }
+      poker_sessao_fotos: {
+        Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string }
+        Insert: { id: string; usuario_id?: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em?: string }
+        Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; local?: string; nome_arquivo?: string; tipo_mime?: string; storage_path?: string; criado_em?: string }
         Relationships: Relacao[]
       }
       organizacao_itens: {

@@ -69,6 +69,8 @@ npx supabase gen types typescript --linked > src/types/database.ts
 | `012_excluir_sessao_poker.sql` | Exclusão atômica de uma sessão Poker inteira, incluindo lançamentos e cash out, respeitando o cadeado |
 | `013_sessoes_poker_locais.sql` | Sessões de Poker por mês da fatura e data, com locais e exclusão segmentada |
 | `014_excluir_local_sessao_poker.sql` | Exclusão protegida de um local e seus lançamentos dentro da sessão |
+| `015_poker_fotos.sql` | Anexos de fotos privados por sessão/local no Supabase Storage |
+| `016_exclusao_fotos_poker.sql` | Exclusão de fotos protegida pelo estado aberto do dia |
 
 - Não edite migrations já aplicadas: mudanças entram como uma nova migration.
   Para as próximas, use `npx supabase migration new nome`, que gera o prefixo com timestamp

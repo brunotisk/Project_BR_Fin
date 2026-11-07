@@ -139,6 +139,7 @@ export const LANCAMENTOS_POKER_INICIAIS: LancamentoPoker[] = [
 export type CashoutPorLocal = Record<string, number>
 export type CashoutsPokerMap = Record<string, CashoutPorLocal>
 export type SessaoPoker = { id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em?: string }
+export type FotoPoker = { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string; url: string }
 
 export const CASHOUTS_INICIAIS: CashoutsPokerMap = {
   '31/out': {
@@ -363,6 +364,21 @@ export async function salvarCartoesControle(
 // ==========================================
 
 export async function carregarLancamentosPoker(mesBase?: string): Promise<LancamentoPoker[]> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (usuarioId) {
+    let queryRemota = (supabase as any)
+      .from('lancamentos_ma')
+      .select('*')
+      .order('ordem', { ascending: true })
+    if (mesBase && mesBase !== 'Todos') queryRemota = queryRemota.ilike('mes_base', `%${mesBase}%`)
+    const { data, error } = await queryRemota
+    if (error) throw error
+    const remotos = (data || []) as LancamentoPoker[]
+    setLocalItem(STORAGE_KEYS.LANCAMENTOS, remotos)
+    return remotos
+  }
+
   try {
     let query = (supabase as any)
       .from('lancamentos_ma')
@@ -554,6 +570,14 @@ export async function excluirSessaoPoker(dataCartao: string, mesBase: string): P
 }
 
 export async function carregarSessoesPoker(): Promise<SessaoPoker[]> {
+  const { data: userData } = await supabase.auth.getUser()
+  if (userData?.user?.id) {
+    const { data, error } = await (supabase as any).from('poker_sessoes').select('id, mes_base, data_cartao, locais, criado_em')
+    if (error) throw error
+    const remotas = (data || []) as SessaoPoker[]
+    setLocalItem(STORAGE_KEYS.SESSOES_POKER, remotas)
+    return remotas
+  }
   const locais = getLocalItem<SessaoPoker[]>(STORAGE_KEYS.SESSOES_POKER, [])
   try {
     const { data, error } = await (supabase as any).from('poker_sessoes').select('id, mes_base, data_cartao, locais, criado_em')
@@ -591,6 +615,78 @@ export async function salvarSessaoPoker(mesBase: string, dataCartao: string, loc
   const atualizadas = indice >= 0 ? sessoes.map((item, i) => i === indice ? sessao : item) : [...sessoes, sessao]
   setLocalItem(STORAGE_KEYS.SESSOES_POKER, atualizadas)
   return sessao
+}
+
+export async function carregarFotosPoker(): Promise<FotoPoker[]> {
+  const { data, error } = await (supabase as any)
+    .from('poker_sessao_fotos')
+    .select('id, usuario_id, mes_base, data_cartao, local, nome_arquivo, tipo_mime, storage_path, criado_em')
+    .order('criado_em', { ascending: true })
+  if (error) throw error
+  const fotos = (data || []) as Omit<FotoPoker, 'url'>[]
+  return Promise.all(fotos.map(async (foto) => {
+    const { data: signed, error: signedError } = await supabase.storage.from('poker-fotos').createSignedUrl(foto.storage_path, 3600)
+    if (signedError) throw signedError
+    return { ...foto, url: signed.signedUrl }
+  }))
+}
+
+export async function adicionarFotoPoker(args: {
+  mesBase: string; dataCartao: string; local: string; nomeArquivo: string; tipoMime: string; uri: string; arquivoWeb?: Blob
+}): Promise<FotoPoker> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Entre na sua conta para anexar fotos.')
+  const id = gerarUuidPoker()
+  const extensao = args.nomeArquivo.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'jpg'
+  const caminho = `${usuarioId}/${id}.${extensao}`
+  const metadata = {
+    id,
+    usuario_id: usuarioId,
+    mes_base: args.mesBase,
+    data_cartao: args.dataCartao,
+    local: args.local,
+    nome_arquivo: args.nomeArquivo,
+    tipo_mime: args.tipoMime,
+    storage_path: caminho
+  }
+  const { error: erroMetadata } = await (supabase as any).from('poker_sessao_fotos').insert(metadata)
+  if (erroMetadata) throw erroMetadata
+  try {
+    const arquivo: Blob = args.arquivoWeb ?? await fetch(args.uri).then((resposta) => {
+      if (!resposta.ok) throw new Error('Não foi possível ler a imagem selecionada.')
+      return resposta.blob()
+    })
+    const { error: erroUpload } = await supabase.storage.from('poker-fotos').upload(caminho, arquivo, {
+      contentType: args.tipoMime,
+      upsert: false
+    })
+    if (erroUpload) throw erroUpload
+    const { data: signed, error: signedError } = await supabase.storage.from('poker-fotos').createSignedUrl(caminho, 3600)
+    if (signedError) throw signedError
+    return { ...metadata, criado_em: new Date().toISOString(), url: signed.signedUrl }
+  } catch (erro) {
+    await (supabase as any).from('poker_sessao_fotos').delete().eq('id', id).eq('usuario_id', usuarioId)
+    throw erro
+  }
+}
+
+export async function excluirFotoPoker(foto: FotoPoker): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser()
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Entre na sua conta para excluir esta foto.')
+  const { error: erroStorage } = await supabase.storage.from('poker-fotos').remove([foto.storage_path])
+  if (erroStorage) throw erroStorage
+  const { data, error } = await (supabase as any)
+    .from('poker_sessao_fotos')
+    .delete()
+    .eq('id', foto.id)
+    .eq('usuario_id', usuarioId)
+    .select('id')
+  if (error) throw error
+  if (!data?.some((linha: { id: string }) => linha.id === foto.id)) {
+    throw new Error('O Supabase não confirmou a exclusão da foto.')
+  }
 }
 
 export async function excluirLocalSessaoPoker(mesBase: string, dataCartao: string, local: string): Promise<void> {

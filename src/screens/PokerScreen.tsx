@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
   KeyboardAvoidingView,
+  Image,
   Modal,
   Platform,
   RefreshControl,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
+import * as DocumentPicker from 'expo-document-picker'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../theme'
@@ -39,7 +41,11 @@ import {
   excluirSessaoPoker as excluirSessaoPokerService,
   salvarLancamentoPoker,
   salvarLocaisPoker,
-  salvarTaxaPadraoPoker
+  salvarTaxaPadraoPoker,
+  carregarFotosPoker,
+  adicionarFotoPoker,
+  excluirFotoPoker,
+  FotoPoker
 } from '../services/planilhasService'
 import { LancamentoPoker } from '../types'
 
@@ -138,6 +144,10 @@ export function PokerScreen() {
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
   const [sessoesSalvas, setSessoesSalvas] = useState<SessaoPoker[]>([])
   const [novoLocalSessao, setNovoLocalSessao] = useState('')
+  const [fotosPoker, setFotosPoker] = useState<FotoPoker[]>([])
+  const [fotoVisualizando, setFotoVisualizando] = useState<FotoPoker | null>(null)
+  const [fotoExcluirConfirmar, setFotoExcluirConfirmar] = useState<FotoPoker | null>(null)
+  const [enviandoFotosLocal, setEnviandoFotosLocal] = useState<string | null>(null)
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
 
   const [mesFiltro, setMesFiltro] = useState<string>('Todos')
@@ -193,8 +203,12 @@ export function PokerScreen() {
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setLocaisCadastrados(carregarLocaisPoker())
       setSessoesSalvas(await carregarSessoesPoker())
+      setFotosPoker(await carregarFotosPoker())
     } catch (err) {
       console.warn('Erro ao carregar Poker:', err)
+      setLancamentos([])
+      setSessoesSalvas([])
+      notify('Não foi possível sincronizar o Poker', 'Confira sua conexão e atualize a tela para buscar a versão do banco.')
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -474,6 +488,58 @@ export function PokerScreen() {
     await salvarLocaisPoker(locais)
     await adicionarLocalSessao(mesBase, dataCartao, local)
     setNovoLocalSessao('')
+  }
+
+  const anexarFotosLocal = async (mesBase: string, dataCartao: string, local: string) => {
+    if (diasBloqueados[dataCartao]) {
+      notify('Dia travado', 'Reabra o dia para anexar fotos.')
+      return
+    }
+    const chave = `${mesBase}|${dataCartao}|${local}`
+    try {
+      const selecao = await DocumentPicker.getDocumentAsync({ type: 'image/*', multiple: true, copyToCacheDirectory: true })
+      if (selecao.canceled) return
+      setEnviandoFotosLocal(chave)
+      let enviadas = 0
+      for (const arquivo of selecao.assets) {
+        if (arquivo.size && arquivo.size > 20 * 1024 * 1024) {
+          notify('Foto muito grande', `${arquivo.name} ultrapassa o limite de 20 MB.`)
+          continue
+        }
+        const foto = await adicionarFotoPoker({
+          mesBase, dataCartao, local,
+          nomeArquivo: arquivo.name,
+          tipoMime: arquivo.mimeType || 'image/jpeg',
+          uri: arquivo.uri,
+          arquivoWeb: arquivo.file
+        })
+        setFotosPoker((anteriores) => [...anteriores, foto])
+        enviadas += 1
+      }
+      if (enviadas > 0) notify('Fotos anexadas', `${enviadas} foto(s) adicionada(s) a ${local}.`)
+    } catch (erro: any) {
+      notify('Não foi possível anexar as fotos', erro?.message || 'Verifique sua conexão e tente novamente.')
+    } finally {
+      setEnviandoFotosLocal(null)
+    }
+  }
+
+  const confirmarExclusaoFoto = async () => {
+    const foto = fotoExcluirConfirmar
+    if (!foto) return
+    if (diasBloqueados[foto.data_cartao]) {
+      setFotoExcluirConfirmar(null)
+      notify('Dia travado', 'Reabra o dia para excluir esta foto.')
+      return
+    }
+    try {
+      await excluirFotoPoker(foto)
+      setFotosPoker((anteriores) => anteriores.filter((item) => item.id !== foto.id))
+      setFotoExcluirConfirmar(null)
+      notify('Foto excluída', 'O anexo foi removido do Supabase Storage.')
+    } catch (erro: any) {
+      notify('Não foi possível excluir a foto', erro?.message || 'Tente novamente.')
+    }
   }
 
   const abrirModalEditar = (item: LancamentoPoker) => {
@@ -856,6 +922,8 @@ export function PokerScreen() {
                 const taxaLocal = itensLocal.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
                 const cashoutLocal = Number(cashoutsDoDia[local]) || 0
                 const netLocal = cashoutLocal - buyInLocal - taxaLocal
+                const fotosLocal = fotosPoker.filter((foto) => normalizarMesBase(foto.mes_base) === normalizarMesBase(mesBaseSessao) && foto.data_cartao === dataSessao && foto.local === local)
+                const chaveFotosLocal = `${mesBaseSessao}|${dataSessao}|${local}`
                 const corDoLocal = local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569'
                 return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
                   <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -888,6 +956,22 @@ export function PokerScreen() {
                     </View>)}
                     {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
                   </View>
+                  {(fotosLocal.length > 0 || !diaTravado) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
+                    {fotosLocal.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: 72, height: 72 }}>
+                        <TouchableOpacity accessibilityRole="imagebutton" accessibilityLabel={`Visualizar ${foto.nome_arquivo}`} onPress={() => setFotoVisualizando(foto)}>
+                          <Image source={{ uri: foto.url }} style={{ width: 72, height: 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
+                        </TouchableOpacity>
+                        {!diaTravado && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
+                          <Ionicons name="close" size={16} color="#fff" />
+                        </TouchableOpacity>}
+                      </View>)}
+                    </ScrollView>}
+                    {!diaTravado && <TouchableOpacity disabled={enviandoFotosLocal === chaveFotosLocal} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 9, backgroundColor: '#F1F5F9', opacity: enviandoFotosLocal === chaveFotosLocal ? 0.6 : 1 }} onPress={() => void anexarFotosLocal(mesBaseSessao, dataSessao, local)}>
+                      <Ionicons name={enviandoFotosLocal === chaveFotosLocal ? 'cloud-upload-outline' : 'images-outline'} size={17} color={colors.primary} />
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{enviandoFotosLocal === chaveFotosLocal ? 'Enviando fotos…' : 'Anexar fotos'}</Text>
+                    </TouchableOpacity>}
+                  </View>}
                 </View>
               })}
               {!diaTravado && <View style={styles.sessaoBottomBar}>
@@ -907,6 +991,27 @@ export function PokerScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal visible={Boolean(fotoVisualizando)} transparent animationType="fade" onRequestClose={() => setFotoVisualizando(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.96)', justifyContent: 'center', alignItems: 'center', padding: 18 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar foto" onPress={() => setFotoVisualizando(null)} style={{ alignSelf: 'flex-end', padding: 10, marginBottom: 8 }}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
+          {fotoVisualizando && <Image source={{ uri: fotoVisualizando.url }} resizeMode="contain" style={{ width: '100%', height: '82%' }} />}
+          <Text numberOfLines={1} style={{ color: '#fff', marginTop: 10 }}>{fotoVisualizando?.nome_arquivo}</Text>
+        </View>
+      </Modal>
+      <Modal visible={Boolean(fotoExcluirConfirmar)} transparent animationType="fade" onRequestClose={() => setFotoExcluirConfirmar(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
+            <Text style={styles.modalTitulo}>Excluir foto anexada?</Text>
+            <Text style={styles.modalSub}>{fotoExcluirConfirmar?.nome_arquivo} será removida do Storage e não poderá ser recuperada.</Text>
+            <View style={styles.modalBotoes}>
+              <TouchableOpacity style={styles.btnCancelar} onPress={() => setFotoExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => void confirmarExclusaoFoto()}><Text style={styles.btnExcluirConfirmarTexto}>Excluir foto</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ======================================================== */}
       {/* MODAL CASHOUT POR LOCAL (ABRE UMA LINHA POR LOCAL E SOMA) */}
