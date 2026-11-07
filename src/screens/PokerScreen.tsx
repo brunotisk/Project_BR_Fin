@@ -67,6 +67,14 @@ function mesBaseHojeKey() {
   return hojeISO().slice(0, 7)
 }
 
+function proximoMesBaseKey() {
+  const [ano, mes] = hojeISO().slice(0, 7).split('-').map(Number)
+  const indice = ano * 12 + mes
+  const anoSeguinte = Math.floor(indice / 12)
+  const mesSeguinte = (indice % 12) + 1
+  return `${anoSeguinte}-${String(mesSeguinte).padStart(2, '0')}`
+}
+
 function decomporMesBase(valor: string): { ano: number | null; mes: number } | null {
   const normalizado = valor.trim().toLowerCase()
   const iso = normalizado.match(/^(\d{4})-(\d{1,2})$/)
@@ -77,11 +85,22 @@ function decomporMesBase(valor: string): { ano: number | null; mes: number } | n
   return mes ? { ano: texto[2] ? Number(texto[2]) : null, mes } : null
 }
 
-function rotuloMesBase(valor: string) {
+function normalizarMesBase(valor: string): string | null {
   const partes = decomporMesBase(valor)
-  if (!partes) return valor
-  if (!partes.ano) return `${MESES[partes.mes - 1]} (ano não informado)`
-  const rotulo = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(partes.ano, partes.mes - 1, 1))
+  if (!partes) return null
+  let ano = partes.ano
+  if (!ano) {
+    const [anoAtual, mesAtual] = mesBaseHojeKey().split('-').map(Number)
+    ano = partes.mes > mesAtual ? anoAtual - 1 : anoAtual
+  }
+  return `${ano}-${String(partes.mes).padStart(2, '0')}`
+}
+
+function rotuloMesBase(valor: string) {
+  const chave = normalizarMesBase(valor)
+  if (!chave) return valor
+  const [ano, mes] = chave.split('-').map(Number)
+  const rotulo = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(ano, mes - 1, 1))
   return rotulo.charAt(0).toLocaleUpperCase('pt-BR') + rotulo.slice(1)
 }
 
@@ -93,7 +112,7 @@ export function PokerScreen() {
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
 
-  const [mesFiltro, setMesFiltro] = useState<string>(mesBaseHojeKey())
+  const [mesFiltro, setMesFiltro] = useState<string>('Todos')
   const [filtroMesAberto, setFiltroMesAberto] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -158,28 +177,14 @@ export function PokerScreen() {
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter((item) => {
       if (mesFiltro === 'Todos') return true
-      const itemMes = decomporMesBase(item.mes_base)
-      const filtro = decomporMesBase(mesFiltro)
-      if (!itemMes || !filtro || itemMes.mes !== filtro.mes) return false
-      return itemMes.ano === null || itemMes.ano === filtro.ano
+      return normalizarMesBase(item.mes_base) === normalizarMesBase(mesFiltro)
     })
   }, [lancamentos, mesFiltro])
 
-  const opcoesMesBase = useMemo(() => {
-    const [anoAtual, mesAtual] = hojeISO().slice(0, 7).split('-').map(Number)
-    const indiceAtual = anoAtual * 12 + mesAtual - 1
-    const valores = new Set<string>()
-    for (let indice = indiceAtual - 24; indice <= indiceAtual + 24; indice += 1) {
-      const ano = Math.floor(indice / 12)
-      const mes = (indice % 12) + 1
-      valores.add(`${ano}-${String(mes).padStart(2, '0')}`)
-    }
-    lancamentos.forEach((item) => {
-      const partes = decomporMesBase(item.mes_base)
-      if (partes?.ano) valores.add(`${partes.ano}-${String(partes.mes).padStart(2, '0')}`)
-    })
-    return Array.from(valores).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) }))
-  }, [lancamentos])
+  const opcoesMesBase = useMemo(() => [mesBaseHojeKey(), proximoMesBaseKey()].map((valor) => ({ valor, label: rotuloMesBase(valor) })), [])
+  const opcoesFiltroMesBase = useMemo(() => Array.from(new Set(
+    lancamentos.map((item) => normalizarMesBase(item.mes_base)).filter((valor): valor is string => Boolean(valor))
+  )).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) })), [lancamentos])
 
   // Agrupar por data da sessão (ex: '31/out', '30/out', '28/out')
   const sessoesAgrupadas = useMemo(() => {
@@ -342,10 +347,10 @@ export function PokerScreen() {
   // ==========================================
   // HANDLERS ENTRADAS (BUY-IN)
   // ==========================================
-  const abrirModalNovo = (dataSessaoSugerida?: string) => {
+  const abrirModalNovo = (dataSessaoSugerida?: string, mesBaseSugerido?: string) => {
     setItemEditando(null)
     setFormDropdownAberto(null)
-    setFormMesBase(mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro)
+    setFormMesBase(mesBaseSugerido ? normalizarMesBase(mesBaseSugerido) || mesBaseHojeKey() : mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro)
     setFormDataCartao(dataSessaoSugerida || dataPokerHoje())
     setFormCartao('')
     setFormLocal('MonteCarlo')
@@ -358,7 +363,7 @@ export function PokerScreen() {
   const abrirModalEditar = (item: LancamentoPoker) => {
     setItemEditando(item)
     setFormDropdownAberto(null)
-    setFormMesBase(item.mes_base)
+    setFormMesBase(normalizarMesBase(item.mes_base) || mesBaseHojeKey())
     setFormDataCartao(item.data_cartao)
     setFormCartao(item.cartao_nome)
     setFormLocal(item.local)
@@ -541,7 +546,7 @@ export function PokerScreen() {
           </TouchableOpacity>
           {filtroMesAberto && <ScrollView nestedScrollEnabled style={styles.monthOptionsList}>
             <TouchableOpacity style={styles.formDropdownOption} onPress={() => { setMesFiltro('Todos'); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>Todos os meses</Text></TouchableOpacity>
-            {opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setMesFiltro(opcao.valor); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}
+            {opcoesFiltroMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setMesFiltro(opcao.valor); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}
           </ScrollView>}
         </View>
 
@@ -761,7 +766,7 @@ export function PokerScreen() {
               <View style={styles.sessaoBottomBar}>
                 <TouchableOpacity
                   style={styles.btnAdicionarNaSessao}
-                  onPress={() => abrirModalNovo(dataSessao)}
+                  onPress={() => abrirModalNovo(dataSessao, itens[0]?.mes_base)}
                 >
                   <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
                   <Text style={styles.btnAdicionarNaSessaoTexto}>
