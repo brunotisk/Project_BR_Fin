@@ -176,7 +176,21 @@ const STORAGE_KEYS = {
   DIAS_POKER_BLOQUEADOS: '@fin_poker_dias_bloqueados',
   TAXA_PADRAO: '@fin_poker_taxa_padrao',
   LOCAIS: '@fin_poker_locais',
+  CARTOES_POKER: '@fin_poker_cartoes',
   MES_SELECIONADO: '@fin_mes_fechamento_selecionado'
+}
+
+export function limparCacheDadosRemotos(): void {
+  if (typeof localStorage === 'undefined') return
+  const prefixosRemotos = [
+    STORAGE_KEYS.FECHAMENTO_PREFIX,
+    STORAGE_KEYS.CARTOES_PREFIX,
+    STORAGE_KEYS.LANCAMENTOS,
+    STORAGE_KEYS.SESSOES_POKER,
+    STORAGE_KEYS.DIAS_POKER_BLOQUEADOS
+  ]
+  const chaves = Array.from({ length: localStorage.length }, (_, indice) => localStorage.key(indice)).filter((chave): chave is string => Boolean(chave))
+  chaves.filter((chave) => prefixosRemotos.some((prefixo) => chave.startsWith(prefixo))).forEach((chave) => localStorage.removeItem(chave))
 }
 
 function getLocalItem<T>(key: string, defaultValue: T): T {
@@ -779,6 +793,14 @@ export function carregarLocaisPoker(): string[] {
 
 export function salvarLocaisPoker(locais: string[]): void {
   setLocalItem(STORAGE_KEYS.LOCAIS, locais)
+}
+
+export function carregarCartoesPoker(): string[] {
+  return getLocalItem<string[]>(STORAGE_KEYS.CARTOES_POKER, CARTOES_PADRAO)
+}
+
+export function salvarCartoesPoker(cartoes: string[]): void {
+  setLocalItem(STORAGE_KEYS.CARTOES_POKER, cartoes)
 }
 
 // Aliases para retrocompatibilidade

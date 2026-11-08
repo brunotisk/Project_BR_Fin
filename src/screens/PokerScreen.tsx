@@ -25,6 +25,7 @@ import {
   carregarDiasPokerBloqueados,
   carregarLancamentosPoker,
   carregarLocaisPoker,
+  carregarCartoesPoker,
   carregarTaxaPadraoPoker,
   carregarSessoesPoker,
   salvarSessaoPoker,
@@ -41,6 +42,7 @@ import {
   excluirSessaoPoker as excluirSessaoPokerService,
   salvarLancamentoPoker,
   salvarLocaisPoker,
+  salvarCartoesPoker,
   salvarTaxaPadraoPoker,
   carregarFotosPoker,
   adicionarFotoPoker,
@@ -59,6 +61,16 @@ function dataPokerOrdenacao(data: string) {
   const dia = Number(m[1])
   const mes = MES_NUMERO[m[2]] || 0
   const ano = m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : 0
+  return ano * 10000 + mes * 100 + dia
+}
+
+function dataSessaoOrdenacao(data: string, mesBase: string) {
+  const match = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
+  if (!match) return dataPokerOrdenacao(data)
+  const dia = Number(match[1])
+  const mes = MES_NUMERO[match[2]] || 0
+  const chaveMes = chaveMesDaDataCartao(data, mesBase)
+  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(chaveMes.slice(0, 4))
   return ano * 10000 + mes * 100 + dia
 }
 
@@ -202,6 +214,7 @@ export function PokerScreen() {
       setDiasBloqueados(await carregarDiasPokerBloqueados())
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setLocaisCadastrados(carregarLocaisPoker())
+      setCartoesCadastrados(carregarCartoesPoker())
       setSessoesSalvas(await carregarSessoesPoker())
       setFotosPoker(await carregarFotosPoker())
     } catch (err) {
@@ -259,7 +272,7 @@ export function PokerScreen() {
       sessao.locais.forEach((local) => { if (!map.get(key)!.locais.includes(local)) map.get(key)!.locais.push(local) })
     })
     return Array.from(map.values()).map((s) => ({ ...s, itens: s.itens.sort(compararLancamentosRecentes), locais: s.locais }))
-      .sort((a, b) => (dataPokerOrdenacao(b.data) - dataPokerOrdenacao(a.data)) || b.mesBase.localeCompare(a.mesBase))
+      .sort((a, b) => (dataSessaoOrdenacao(b.data, b.mesBase) - dataSessaoOrdenacao(a.data, a.mesBase)) || b.mesBase.localeCompare(a.mesBase))
   }, [lancamentosFiltrados, sessoesSalvas, mesFiltro])
 
   // Totais Gerais
@@ -393,7 +406,9 @@ export function PokerScreen() {
 
     if (dropdownConfig.tipo === 'cartao') {
       if (!cartoesCadastrados.includes(novo)) {
-        setCartoesCadastrados([...cartoesCadastrados, novo])
+        const novosCartoes = [...cartoesCadastrados, novo]
+        setCartoesCadastrados(novosCartoes)
+        salvarCartoesPoker(novosCartoes)
       }
     } else {
       if (!locaisCadastrados.includes(novo)) {
