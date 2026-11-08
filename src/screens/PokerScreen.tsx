@@ -22,6 +22,7 @@ import { notify } from '../utils/notify'
 import { hojeISO } from '../utils/datas'
 import {
   carregarCashoutsPoker,
+  sincronizarCashoutsPoker,
   carregarDiasPokerBloqueados,
   carregarLancamentosPoker,
   carregarLocaisPoker,
@@ -53,6 +54,10 @@ import { LancamentoPoker } from '../types'
 
 const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+const LOGOS_CLUBES: Record<string, number> = {
+  h2: require('../../assets/logo-h2.png'),
+  montecarlo: require('../../assets/logo-montecarlo.png')
+}
 const MES_NUMERO: Record<string, number> = { jan: 1, janeiro: 1, fev: 2, fevereiro: 2, mar: 3, março: 3, abr: 4, abril: 4, mai: 5, maio: 5, jun: 6, junho: 6, jul: 7, julho: 7, ago: 8, agosto: 8, set: 9, setembro: 9, out: 10, outubro: 10, nov: 11, novembro: 11, dez: 12, dezembro: 12 }
 
 function dataPokerOrdenacao(data: string) {
@@ -189,6 +194,7 @@ export function PokerScreen() {
   // Modal para Editar CASHout por Local
   const [modalCashoutVisible, setModalCashoutVisible] = useState(false)
   const [cashoutDataAlvo, setCashoutDataAlvo] = useState('')
+  const [cashoutMesBaseAlvo, setCashoutMesBaseAlvo] = useState('')
   const [cashoutInputsPorLocal, setCashoutInputsPorLocal] = useState<Record<string, string>>({})
 
   // Modal para Editar Taxa %
@@ -210,7 +216,12 @@ export function PokerScreen() {
     try {
       const data = await carregarLancamentosPoker()
       setLancamentos(data)
-      setCashouts(carregarCashoutsPoker())
+      try {
+        setCashouts(await sincronizarCashoutsPoker())
+      } catch (erro) {
+        console.warn('Não foi possível atualizar os cashouts do Supabase:', erro)
+        setCashouts(carregarCashoutsPoker())
+      }
       setDiasBloqueados(await carregarDiasPokerBloqueados())
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setLocaisCadastrados(carregarLocaisPoker())
@@ -295,8 +306,9 @@ export function PokerScreen() {
   // ==========================================
   // HANDLERS CASHOUT POR LOCAL
   // ==========================================
-  const abrirModalCashout = (dataCartao: string, itensDaSessao: LancamentoPoker[]) => {
+  const abrirModalCashout = (dataCartao: string, itensDaSessao: LancamentoPoker[], mesBase: string) => {
     setCashoutDataAlvo(dataCartao)
+    setCashoutMesBaseAlvo(mesBase)
 
     // Identificar todos os locais da sessão, garantindo que MonteCarlo e H2 estejam disponíveis
     const locaisDaSessao = Array.from(
@@ -313,16 +325,19 @@ export function PokerScreen() {
       const v = valoresSalvos[loc]
       inputsIniciais[loc] = v && v > 0 ? v.toString() : ''
     })
+    if (valoresSalvos.Total !== undefined) inputsIniciais.Total = Number(valoresSalvos.Total) > 0 ? String(valoresSalvos.Total) : ''
 
     setCashoutInputsPorLocal(inputsIniciais)
     setModalCashoutVisible(true)
   }
 
   const handleAlterarInputLocal = (local: string, valorStr: string) => {
-    setCashoutInputsPorLocal((prev) => ({
-      ...prev,
-      [local]: valorStr
-    }))
+    setCashoutInputsPorLocal((prev) => {
+      const proximo = { ...prev }
+      if (local !== 'Total') delete proximo.Total
+      proximo[local] = valorStr
+      return proximo
+    })
   }
 
   // Soma automática dos inputs em tempo real no modal
@@ -345,7 +360,7 @@ export function PokerScreen() {
       mapaSalvar[loc] = num
     }
 
-    await salvarCashoutsDaSessao(cashoutDataAlvo, mapaSalvar, mesFiltro)
+    await salvarCashoutsDaSessao(cashoutDataAlvo, mapaSalvar, cashoutMesBaseAlvo || mesFiltro)
     setCashouts((prev) => ({ ...prev, [cashoutDataAlvo]: mapaSalvar }))
     setModalCashoutVisible(false)
     notify('CASHout Salvo', `Total de ${formatCurrency(somaCashoutModal)} para ${cashoutDataAlvo}.`)
@@ -800,18 +815,6 @@ export function PokerScreen() {
           </ScrollView>}
         </View>
 
-        {/* Legenda dos campos */}
-        <View style={styles.legendaRow}>
-          <View style={styles.legendaItem}>
-            <View style={[styles.legendaCor, { backgroundColor: '#FEF08A' }]} />
-            <Text style={styles.legendaTexto}>Amarelo = Entradas (Valor / CASHout / Taxa)</Text>
-          </View>
-          <View style={styles.legendaItem}>
-            <View style={[styles.legendaCor, { backgroundColor: '#DCFCE7' }]} />
-            <Text style={styles.legendaTexto}>Verde = Dropdown (Local / Cartão)</Text>
-          </View>
-        </View>
-
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
         {/* ======================================================== */}
@@ -885,23 +888,23 @@ export function PokerScreen() {
                   {/* Linha 2: CASHout (editável) e NET */}
                   <View style={[styles.resumoGridRow, { marginTop: 8 }]}>
                     <TouchableOpacity
-                      style={styles.cashoutMiniBoxAmarelo}
+                      style={[styles.cashoutMiniBoxAmarelo, diaTravado && styles.cashoutMiniBoxFechada]}
                       disabled={diaTravado}
-                      onPress={() => abrirModalCashout(dataSessao, itens)}
+                      onPress={() => abrirModalCashout(dataSessao, itens, mesBaseSessao)}
                     >
                       <View style={styles.cashoutMiniTop}>
-                        <Text style={styles.cashoutMiniLabel}>CASHout</Text>
+                        <Text style={[styles.cashoutMiniLabel, diaTravado && styles.cashoutMiniLabelFechado]}>CASHout</Text>
                         {!diaTravado && <Ionicons name="pencil" size={12} color="#854D0E" />}
                       </View>
-                      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.cashoutMiniValor}>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.cashoutMiniValor, diaTravado && styles.cashoutMiniValorFechado]}>
                         {formatCurrency(cashoutTotalSessao)}
                       </Text>
                       {detalhesLocais ? (
-                        <Text numberOfLines={1} style={styles.cashoutDetalhesTexto}>
+                        <Text numberOfLines={1} style={[styles.cashoutDetalhesTexto, diaTravado && styles.cashoutDetalhesTextoFechado]}>
                           {detalhesLocais}
                         </Text>
                       ) : (
-                        <Text style={styles.cashoutDetalhesTexto}>{diaTravado ? 'Dia travado' : 'Toque p/ editar por local'}</Text>
+                        <Text style={[styles.cashoutDetalhesTexto, diaTravado && styles.cashoutDetalhesTextoFechado]}>{diaTravado ? 'Dia travado' : 'Toque p/ editar por local'}</Text>
                       )}
                     </TouchableOpacity>
 
@@ -942,12 +945,15 @@ export function PokerScreen() {
                 const corDoLocal = local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569'
                 return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
                   <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 3, marginTop: 3 }}>
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in {formatCurrency(buyInLocal)}</Text>
-                        <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout {formatCurrency(cashoutLocal)}</Text>
-                        <Text style={{ fontSize: 10, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
+                    <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                      {LOGOS_CLUBES[local.toLowerCase()] && <Image accessibilityLabel={`Logo ${local}`} source={LOGOS_CLUBES[local.toLowerCase()]} resizeMode="contain" style={{ width: 40, height: 40 }} />}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 3, marginTop: 3 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in {formatCurrency(buyInLocal)}</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout {formatCurrency(cashoutLocal)}</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
+                        </View>
                       </View>
                     </View>
                     {!diaTravado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
@@ -1640,8 +1646,8 @@ const styles = StyleSheet.create({
     borderColor: '#86EFAC'
   },
   sessaoCardFechada: {
-    borderColor: '#FBBF24',
-    backgroundColor: '#FFFBEB'
+    borderColor: '#93C5FD',
+    backgroundColor: '#EFF6FF'
   },
   sessaoTopBar: {
     flexDirection: 'row',
@@ -1658,8 +1664,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#BBF7D0'
   },
   sessaoTopBarFechada: {
-    backgroundColor: '#FEF3C7',
-    borderBottomColor: '#FCD34D'
+    backgroundColor: '#DBEAFE',
+    borderBottomColor: '#BFDBFE'
   },
   sessaoTopActions: {
     flexDirection: 'row',
@@ -1678,8 +1684,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   sessaoLockButtonActive: {
-    borderColor: '#F59E0B',
-    backgroundColor: '#FEF3C7'
+    borderColor: '#60A5FA',
+    backgroundColor: '#EFF6FF'
   },
   sessionDeleteButton: {
     width: 30,
@@ -1701,7 +1707,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   sessaoLockTextActive: {
-    color: '#92400E'
+    color: '#1D4ED8'
   },
   sessaoBadgeDia: {
     flexDirection: 'row',
@@ -1714,7 +1720,7 @@ const styles = StyleSheet.create({
     color: colors.text
   },
   sessaoDiaTextoFechada: {
-    color: '#78350F'
+    color: '#1E40AF'
   },
   sessaoEntradasBadge: {
     fontSize: 11,
@@ -1783,6 +1789,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#FACC15'
   },
+  cashoutMiniBoxFechada: {
+    backgroundColor: '#DBEAFE',
+    borderColor: '#93C5FD'
+  },
   cashoutMiniTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1794,17 +1804,26 @@ const styles = StyleSheet.create({
     color: '#713F12',
     textTransform: 'uppercase'
   },
+  cashoutMiniLabelFechado: {
+    color: '#1E40AF'
+  },
   cashoutMiniValor: {
     fontSize: 13,
     fontWeight: '900',
     color: '#713F12',
     marginTop: 2
   },
+  cashoutMiniValorFechado: {
+    color: '#1D4ED8'
+  },
   cashoutDetalhesTexto: {
     fontSize: 9,
     color: '#854D0E',
     marginTop: 2,
     fontWeight: '600'
+  },
+  cashoutDetalhesTextoFechado: {
+    color: '#1E40AF'
   },
   tableScroll: {
     marginHorizontal: 1

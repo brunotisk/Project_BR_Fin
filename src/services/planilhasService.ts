@@ -739,6 +739,37 @@ export function carregarCashoutsPoker(): CashoutsPokerMap {
   return Object.keys(result).length > 0 ? result : CASHOUTS_INICIAIS
 }
 
+export async function sincronizarCashoutsPoker(): Promise<CashoutsPokerMap> {
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData?.user?.id) return carregarCashoutsPoker()
+  const { data, error } = await (supabase as any)
+    .from('poker_sessoes_cashout')
+    .select('data_cartao, mes_base, cashout, atualizado_em')
+    .order('atualizado_em', { ascending: false })
+  if (error) throw error
+
+  const rawLocal = getLocalItem<Record<string, any> | null>(STORAGE_KEYS.CASHOUTS, null) || {}
+  const local: CashoutsPokerMap = {}
+  Object.entries(rawLocal).forEach(([data, valores]) => {
+    if (typeof valores === 'number') local[data] = { Total: valores }
+    else if (valores && typeof valores === 'object') local[data] = valores as CashoutPorLocal
+  })
+  const sincronizados: CashoutsPokerMap = { ...local }
+  const datasAplicadas = new Set<string>()
+  ;(data || []).forEach((registro: { data_cartao: string; cashout: number }) => {
+    if (datasAplicadas.has(registro.data_cartao)) return
+    datasAplicadas.add(registro.data_cartao)
+    const totalRemoto = Number(registro.cashout) || 0
+    const valoresLocais = local[registro.data_cartao]
+    const totalLocal = valoresLocais ? obterTotalCashoutSessao(valoresLocais) : null
+    sincronizados[registro.data_cartao] = totalLocal !== null && Math.abs(totalLocal - totalRemoto) < 0.01
+      ? valoresLocais
+      : { Total: totalRemoto }
+  })
+  setLocalItem(STORAGE_KEYS.CASHOUTS, sincronizados)
+  return sincronizados
+}
+
 export function obterTotalCashoutSessao(cashoutsDaSessao?: CashoutPorLocal): number {
   if (!cashoutsDaSessao) return 0
   return Object.values(cashoutsDaSessao).reduce((acc, v) => acc + (Number(v) || 0), 0)
