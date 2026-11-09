@@ -198,7 +198,8 @@ function rotuloMesBase(valor: string) {
 }
 
 export function PokerScreen() {
-  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido'>('detalhado')
+  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos'>('detalhado')
+  const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
   const [diasBloqueados, setDiasBloqueados] = useState<Record<string, boolean>>({})
@@ -350,6 +351,51 @@ export function PokerScreen() {
   }, [sessoesAgrupadas, cashouts])
 
   const totalNetGeral = totalCashoutGeral - totalSacadoGeral - totalTaxaGeral
+  const hintResultadoGeral = mesFiltro === 'Todos'
+    ? 'Result. Geral'
+    : (() => {
+        const partes = mesFiltro.match(/^(\d{4})-(\d{2})$/)
+        return partes ? `Result. ${MESES_ABREVIADOS[Number(partes[2]) - 1]}/${partes[1].slice(-2)}` : `Result. ${rotuloMesBase(mesFiltro)}`
+      })()
+
+  const dadosGraficosSessoes = useMemo(() => sessoesAgrupadas.map((sessao) => {
+    const buyIn = sessao.itens.reduce((total, item) => total + (Number(item.valor) || 0), 0)
+    const taxas = sessao.itens.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
+    const cashout = obterTotalCashoutSessao(cashouts[sessao.data])
+    return { data: sessao.data, mesBase: sessao.mesBase, buyIn, cashout, net: cashout - buyIn - taxas }
+  }), [sessoesAgrupadas, cashouts])
+
+  const dadosResultadoOrdenados = useMemo(() => [...dadosGraficosSessoes].sort((a, b) => {
+    if (ordenacaoResultadoGrafico === 'data_asc') return dataSessaoOrdenacao(a.data, a.mesBase) - dataSessaoOrdenacao(b.data, b.mesBase)
+    if (ordenacaoResultadoGrafico === 'resultado_asc') return a.net - b.net
+    if (ordenacaoResultadoGrafico === 'resultado_desc') return b.net - a.net
+    return dataSessaoOrdenacao(b.data, b.mesBase) - dataSessaoOrdenacao(a.data, a.mesBase)
+  }), [dadosGraficosSessoes, ordenacaoResultadoGrafico])
+
+  const dadosGraficosLocais = useMemo(() => {
+    const porLocal = new Map<string, { buyIn: number; taxas: number; cashout: number }>()
+    sessoesAgrupadas.forEach((sessao) => {
+      sessao.itens.forEach((item) => {
+        const nome = nomeLocalCanonico(item.local, configuracoesLocais)
+        const atual = porLocal.get(nome) || { buyIn: 0, taxas: 0, cashout: 0 }
+        atual.buyIn += Number(item.valor) || 0
+        atual.taxas += Number(item.taxa) || 0
+        porLocal.set(nome, atual)
+      })
+      Object.entries(cashouts[sessao.data] || {}).forEach(([local, valor]) => {
+        if (local === 'Total' || local === '__formas') return
+        const nome = nomeLocalCanonico(local, configuracoesLocais)
+        const atual = porLocal.get(nome) || { buyIn: 0, taxas: 0, cashout: 0 }
+        atual.cashout += Number(valor) || 0
+        porLocal.set(nome, atual)
+      })
+    })
+    return Array.from(porLocal.entries()).map(([local, dados]) => ({ local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas }))
+      .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+  }, [sessoesAgrupadas, cashouts, configuracoesLocais])
+  const maiorFluxoGraficos = Math.max(1, ...dadosGraficosSessoes.flatMap((sessao) => [sessao.buyIn, sessao.cashout]))
+  const maiorResultadoGraficos = Math.max(1, ...dadosGraficosSessoes.map((sessao) => Math.abs(sessao.net)))
+  const maiorResultadoLocalGraficos = Math.max(1, ...dadosGraficosLocais.map((local) => Math.abs(local.net)))
 
   // ==========================================
   // HANDLERS CASHOUT POR LOCAL
@@ -770,22 +816,26 @@ export function PokerScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleGroup}>
             <Text style={styles.title}>Poker</Text>
-            <View style={styles.viewModeSwitch}>
-              <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
-                <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
-                <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
-              </TouchableOpacity>
-              <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
-                <Ionicons name="grid-outline" size={15} color={visualizacaoSessoes === 'resumido' ? '#fff' : colors.primary} />
-                <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumido</Text>
-              </TouchableOpacity>
-            </View>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={[styles.btnNovoTopo, { width: 42, justifyContent: 'center' }]} accessibilityRole="button" accessibilityLabel="Criar sessão" onPress={abrirNovaSessao}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
+        </View>
+        <View style={styles.viewModeSwitch}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
+            <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
+            <Ionicons name="grid-outline" size={15} color={visualizacaoSessoes === 'resumido' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumido</Text>
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'graficos' }} onPress={() => setVisualizacaoSessoes('graficos')} style={[styles.viewModeButton, visualizacaoSessoes === 'graficos' && styles.viewModeButtonActive]}>
+            <Ionicons name="stats-chart-outline" size={15} color={visualizacaoSessoes === 'graficos' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'graficos' && styles.viewModeButtonTextActive]}>Gráficos</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ======================================================== */}
@@ -811,7 +861,7 @@ export function PokerScreen() {
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>
               {formatarResultadoPoker(totalNetGeral, formatoNegativoPoker)}
             </Text>
-            <Text style={styles.kpiHint}>Resultado do mês</Text>
+            <Text style={styles.kpiHint}>{hintResultadoGeral}</Text>
           </View>
         </View>
 
@@ -829,10 +879,53 @@ export function PokerScreen() {
           </ScrollView>}
         </View>
 
+        {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
+          {dadosGraficosSessoes.length === 0 ? <View style={styles.graphCard}><Text style={styles.graphTitle}>Sem dados para exibir</Text><Text style={styles.graphEmpty}>Adicione lançamentos ou escolha outro mês base para ver os gráficos.</Text></View> : <>
+            <View style={styles.graphCard}>
+              <Text style={styles.graphTitle}>Buy-ins e Cashout por sessão</Text>
+              <View style={styles.graphLegend}>
+                <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#0284C7' }]} /><Text style={styles.graphLegendText}>Buy-ins</Text></View>
+                <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#7C3AED' }]} /><Text style={styles.graphLegendText}>Cashout</Text></View>
+              </View>
+              {dadosGraficosSessoes.slice(0, 6).map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphSessionRow, sessao.net < 0 && styles.graphSessionRowNegative, index === 0 && { borderTopWidth: 0 }]}>
+                <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
+                <View style={styles.graphSeries}>
+                  <View style={styles.graphBarLine}><View style={styles.graphFlowTrack}><View style={[styles.graphBar, { width: `${Math.max(2, (sessao.buyIn / maiorFluxoGraficos) * 100)}%`, backgroundColor: '#0284C7' }]} /></View><Text style={styles.graphValue}>{formatValorKpi(sessao.buyIn)}</Text></View>
+                  <View style={styles.graphBarLine}><View style={styles.graphFlowTrack}><View style={[styles.graphBar, { width: `${Math.max(2, (sessao.cashout / maiorFluxoGraficos) * 100)}%`, backgroundColor: '#7C3AED' }]} /></View><Text style={styles.graphValue}>{formatValorKpi(sessao.cashout)}</Text></View>
+                </View>
+              </View>)}
+            </View>
+
+            <View style={styles.graphCard}>
+              <Text style={styles.graphTitle}>Resultado por sessão</Text>
+              <View style={styles.graphSortControls}>
+                {([
+                  ['data_desc', 'Data ↓'], ['data_asc', 'Data ↑'],
+                  ['resultado_desc', 'Resultado ↓'], ['resultado_asc', 'Resultado ↑']
+                ] as const).map(([valor, rotulo]) => <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: ordenacaoResultadoGrafico === valor }} onPress={() => setOrdenacaoResultadoGrafico(valor)} style={[styles.graphSortButton, ordenacaoResultadoGrafico === valor && styles.graphSortButtonActive]}><Text style={[styles.graphSortText, ordenacaoResultadoGrafico === valor && styles.graphSortTextActive]}>{rotulo}</Text></TouchableOpacity>)}
+              </View>
+              {dadosResultadoOrdenados.map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+                <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
+                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(sessao.net) / maiorResultadoGraficos) * 100)}%`, backgroundColor: sessao.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
+                <Text style={[styles.graphResultValue, { color: sessao.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(sessao.net, formatoNegativoPoker)}</Text>
+              </View>)}
+            </View>
+
+            {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
+              <Text style={styles.graphTitle}>Resultado por clube</Text>
+              {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+                <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
+                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
+                <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
+              </View>)}
+            </View>}
+          </>}
+        </View>}
+
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
         {/* ======================================================== */}
-        {sessoesAgrupadas.map((sessao) => {
+        {visualizacaoSessoes !== 'graficos' && sessoesAgrupadas.map((sessao) => {
           const { data: dataSessao, mesBase: mesBaseSessao, itens } = sessao
           const buyInSessao = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0)
           const taxaSessao = itens.reduce((s, it) => s + (Number(it.taxa) || 0), 0)
@@ -979,11 +1072,11 @@ export function PokerScreen() {
                     </View>)}
                     {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
                   </View>}
-                  {(fotosLocal.length > 0 || (!diaTravado && visualizacaoSessoes === 'detalhado')) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
+                  {visualizacaoSessoes === 'detalhado' && (fotosLocal.length > 0 || !diaTravado) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
                     {fotosLocal.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: visualizacaoSessoes === 'resumido' ? 58 : 72, height: visualizacaoSessoes === 'resumido' ? 50 : 72 }}>
+                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: 72, height: 72 }}>
                         <TouchableOpacity accessibilityRole="imagebutton" accessibilityLabel={`Visualizar ${foto.nome_arquivo}`} onPress={() => setFotoVisualizando(foto)}>
-                          <Image source={{ uri: foto.url }} style={{ width: visualizacaoSessoes === 'resumido' ? 58 : 72, height: visualizacaoSessoes === 'resumido' ? 50 : 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
+                          <Image source={{ uri: foto.url }} style={{ width: 72, height: 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
                         </TouchableOpacity>
                         {!diaTravado && visualizacaoSessoes === 'detalhado' && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
                           <Ionicons name="close" size={16} color="#fff" />
@@ -1417,7 +1510,10 @@ const styles = StyleSheet.create({
   viewModeSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4
+    gap: 6,
+    marginTop: -6,
+    marginBottom: 14,
+    flexWrap: 'wrap'
   },
   viewModeButton: {
     flexDirection: 'row',
@@ -2121,6 +2217,158 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between'
+  },
+  graphScreen: {
+    gap: 12,
+    marginBottom: 14
+  },
+  graphCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 14,
+    gap: 9,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2
+  },
+  graphTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  graphLegend: {
+    flexDirection: 'row',
+    gap: 14,
+    marginBottom: 2
+  },
+  graphLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5
+  },
+  graphLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4
+  },
+  graphLegendText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  graphSessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  graphSessionRowNegative: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    paddingHorizontal: 7
+  },
+  graphDate: {
+    width: 48,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  graphSeries: {
+    flex: 1,
+    gap: 5
+  },
+  graphBarLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7
+  },
+  graphFlowTrack: {
+    flex: 1,
+    height: 7,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceHover
+  },
+  graphBar: {
+    height: '100%',
+    minWidth: 3,
+    borderRadius: 4
+  },
+  graphValue: {
+    width: 54,
+    textAlign: 'right',
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  graphResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  graphResultTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceHover
+  },
+  graphResultBar: {
+    height: '100%',
+    minWidth: 3,
+    borderRadius: 5
+  },
+  graphResultValue: {
+    width: 96,
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  graphClubName: {
+    width: 62,
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  graphEmpty: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18
+  },
+  graphSortControls: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2
+  },
+  graphSortButton: {
+    minHeight: 30,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceHover,
+    justifyContent: 'center'
+  },
+  graphSortButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight
+  },
+  graphSortText: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '700'
+  },
+  graphSortTextActive: {
+    color: colors.primary
   },
   somaCashoutCard: {
     backgroundColor: '#F1F3F5',

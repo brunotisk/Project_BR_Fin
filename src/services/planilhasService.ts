@@ -326,13 +326,23 @@ export async function carregarCartoesControle(mes: string): Promise<{
   detalhados: CartaoControleItem[]
 }> {
   const mesFormatado = mes.trim()
+  const mesLegado = mesFormatado.replace(/\s+\d{4}$/, '')
 
   try {
-    const { data, error } = await (supabase as any)
+    let { data, error } = await (supabase as any)
       .from('cartoes_controle_ma')
       .select('*')
       .ilike('mes_referencia', `%${mesFormatado}%`)
       .order('ordem', { ascending: true })
+
+    if (!error && (!data || data.length === 0) && mesLegado !== mesFormatado) {
+      const legado = await (supabase as any)
+        .from('cartoes_controle_ma')
+        .select('*')
+        .eq('mes_referencia', mesLegado)
+        .order('ordem', { ascending: true })
+      if (!legado.error && legado.data?.length) data = legado.data
+    }
 
     if (!error && data && data.length > 0) {
       const vigentes = data.filter((c: CartaoControleItem) => c.tabela_tipo === 'vigente')
@@ -348,13 +358,16 @@ export async function carregarCartoesControle(mes: string): Promise<{
     `${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`,
     null
   )
-  if (local && local.length > 0) {
-    const vigentes = local.filter((c) => c.tabela_tipo === 'vigente')
-    const detalhados = local.filter((c) => c.tabela_tipo === 'detalhado_ma')
+  const localEncontrado = local?.length ? local : mesLegado !== mesFormatado
+    ? getLocalItem<CartaoControleItem[] | null>(`${STORAGE_KEYS.CARTOES_PREFIX}${mesLegado}`, null)
+    : null
+  if (localEncontrado && localEncontrado.length > 0) {
+    const vigentes = localEncontrado.filter((c) => c.tabela_tipo === 'vigente')
+    const detalhados = localEncontrado.filter((c) => c.tabela_tipo === 'detalhado_ma')
     return { vigentes, detalhados }
   }
 
-  if (mesFormatado === 'Outubro') {
+  if (mesLegado === 'Outubro') {
     return {
       vigentes: CARTOES_VIGENTES_INICIAIS,
       detalhados: CARTOES_DETALHADOS_INICIAIS

@@ -53,6 +53,8 @@ export type CartaoControleItem = {
   valor_sem_ma?: number
   fechamento?: string
   pagamento?: string
+  fechamento_estimado?: boolean
+  status?: 'aberto' | 'fechado'
   atualizado_em_texto?: string
   ordem?: number
   criado_em?: string
