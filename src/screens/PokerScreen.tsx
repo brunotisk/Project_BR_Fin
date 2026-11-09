@@ -54,6 +54,12 @@ import { LancamentoPoker } from '../types'
 
 const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+const formatCurrencyInteira = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value)
+const formatValorKpi = (value: number) => {
+  const arredondado = Math.round((Number(value) || 0) * 100) / 100
+  const temCentavos = !Number.isInteger(arredondado)
+  return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: temCentavos ? 2 : 0, maximumFractionDigits: 2 }).format(arredondado)
+}
 const LOGOS_CLUBES: Record<string, number> = {
   h2: require('../../assets/logo-h2.png'),
   montecarlo: require('../../assets/logo-montecarlo.png')
@@ -112,6 +118,22 @@ function dataCartaoSelecionada(dia: number, mesKey: string) {
   return `${dia}/${MESES_ABREVIADOS[mes - 1]}/${ano}`
 }
 
+function formatarDataPoker(data: string | null | undefined, mesBase?: string) {
+  if (!data) return ''
+  const valor = data.trim().toLowerCase()
+  const iso = valor.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (iso) return `${iso[3].padStart(2, '0')}/${MESES_ABREVIADOS[Number(iso[2]) - 1]}/${iso[1]}`
+
+  const match = valor.match(/^(\d{1,2})[\/-]([a-zç]+|\d{1,2})(?:[\/-](\d{2,4}))?$/i)
+  if (!match) return data
+  const dia = Number(match[1])
+  const mes = /^\d+$/.test(match[2]) ? Number(match[2]) : MES_NUMERO[match[2]]
+  if (!mes || mes < 1 || mes > 12) return data
+  const anoBase = normalizarMesBase(mesBase || '')?.slice(0, 4) || hojeISO().slice(0, 4)
+  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(anoBase)
+  return `${String(dia).padStart(2, '0')}/${MESES_ABREVIADOS[mes - 1]}/${ano}`
+}
+
 function mesBaseHojeKey() {
   return hojeISO().slice(0, 7)
 }
@@ -160,7 +182,6 @@ export function PokerScreen() {
   const [taxaPadraoPercentual, setTaxaPadraoPercentual] = useState<number>(5)
   const [locaisCadastrados, setLocaisCadastrados] = useState<string[]>(['MonteCarlo', 'H2'])
   const [sessoesSalvas, setSessoesSalvas] = useState<SessaoPoker[]>([])
-  const [novoLocalSessao, setNovoLocalSessao] = useState('')
   const [fotosPoker, setFotosPoker] = useState<FotoPoker[]>([])
   const [fotoVisualizando, setFotoVisualizando] = useState<FotoPoker | null>(null)
   const [fotoExcluirConfirmar, setFotoExcluirConfirmar] = useState<FotoPoker | null>(null)
@@ -363,7 +384,7 @@ export function PokerScreen() {
     await salvarCashoutsDaSessao(cashoutDataAlvo, mapaSalvar, cashoutMesBaseAlvo || mesFiltro)
     setCashouts((prev) => ({ ...prev, [cashoutDataAlvo]: mapaSalvar }))
     setModalCashoutVisible(false)
-    notify('CASHout Salvo', `Total de ${formatCurrency(somaCashoutModal)} para ${cashoutDataAlvo}.`)
+    notify('CASHout Salvo', `Total de ${formatCurrency(somaCashoutModal)} para ${formatarDataPoker(cashoutDataAlvo, cashoutMesBaseAlvo)}.`)
   }
 
   // ==========================================
@@ -508,16 +529,6 @@ export function PokerScreen() {
         return idx < 0 ? [...anteriores, sessao] : anteriores.map((s, i) => i === idx ? sessao : s)
       })
     } catch (erro: any) { notify('Não foi possível adicionar o local', erro?.message || 'Tente novamente.') }
-  }
-
-  const cadastrarLocalNaSessao = async (mesBase: string, dataCartao: string) => {
-    const local = novoLocalSessao.trim()
-    if (!local) return
-    const locais = Array.from(new Set([...locaisCadastrados, local]))
-    setLocaisCadastrados(locais)
-    await salvarLocaisPoker(locais)
-    await adicionarLocalSessao(mesBase, dataCartao, local)
-    setNovoLocalSessao('')
   }
 
   const anexarFotosLocal = async (mesBase: string, dataCartao: string, local: string) => {
@@ -749,7 +760,6 @@ export function PokerScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.title}>Poker</Text>
-            <Text style={styles.subtitle}>Sessões, Buy-ins, Taxas e Cash Out</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.btnTaxaTopo} onPress={() => { setTaxaInputVal(taxaPadraoPercentual.toString()); setModalTaxaVisible(true) }}>
@@ -766,36 +776,24 @@ export function PokerScreen() {
         {/* CARDS SUPERIORES ADAPTADOS PARA CELULAR */}
         {/* ======================================================== */}
         <View style={styles.kpiRow}>
-          {/* Card ValorSacado */}
+          {/* Card Buy-ins */}
           <View style={[styles.kpiCard, { borderLeftColor: '#0284C7' }]}>
-            <Text style={styles.kpiLabel}>ValorSacado</Text>
+            <Text style={styles.kpiLabel}>Buy-ins</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#0369A1' }]}>
-              {formatCurrency(totalSacadoGeral)}
+              {formatValorKpi(totalSacadoGeral)}
             </Text>
-            <Text style={styles.kpiHint}>Total Buy-ins do Mês</Text>
+            <Text style={styles.kpiHint}>Taxas: {formatValorKpi(totalTaxaGeral)}</Text>
           </View>
 
-          {/* Card ValorTaxa */}
-          <View style={[styles.kpiCard, { borderLeftColor: '#D97706' }]}>
-            <Text style={styles.kpiLabel}>ValorTaxa</Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#B45309' }]}>
-              {formatCurrency(totalTaxaGeral)}
-            </Text>
-            <Text style={styles.kpiHint}>Taxas acumuladas</Text>
-          </View>
-        </View>
-
-        {/* CASH OUT TOTAL e NET com o mesmo padrão dos cards de buy-in e taxa */}
-        <View style={styles.kpiSecondRow}>
           <View style={[styles.kpiCard, { borderLeftColor: '#7C3AED' }]}>
-            <Text style={styles.kpiLabel}>Cash out total</Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#6D28D9' }]}>{formatCurrency(totalCashoutGeral)}</Text>
-            <Text style={styles.kpiHint}>Total recebido no mês</Text>
+            <Text style={styles.kpiLabel}>Cashout</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#6D28D9' }]}>{formatValorKpi(totalCashoutGeral)}</Text>
+            <Text style={styles.kpiHint}>Total Cashout</Text>
           </View>
           <View style={[styles.kpiCard, { borderLeftColor: totalNetGeral >= 0 ? '#16A34A' : '#DC2626' }]}>
             <Text style={styles.kpiLabel}>Líquido (Net)</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>
-              {totalNetGeral >= 0 ? `+${formatCurrency(totalNetGeral)}` : formatCurrency(totalNetGeral)}
+              {totalNetGeral >= 0 ? `+${formatValorKpi(totalNetGeral)}` : formatValorKpi(totalNetGeral)}
             </Text>
             <Text style={styles.kpiHint}>Resultado do mês</Text>
           </View>
@@ -825,25 +823,37 @@ export function PokerScreen() {
           const cashoutsDoDia = cashouts[dataSessao] || {}
           const cashoutTotalSessao = obterTotalCashoutSessao(cashoutsDoDia)
           const netSessao = cashoutTotalSessao - buyInSessao - taxaSessao
-
-          // Detalhes dos locais para exibir abaixo do CASHout (ex: MonteCarlo: R$ 0 | H2: R$ 14.655)
-          const detalhesLocais = Object.entries(cashoutsDoDia)
-            .filter(([, val]) => val > 0)
-            .map(([loc, val]) => `${loc}: ${formatCurrency(val)}`)
-            .join(' + ')
+          const locaisCashout = [...new Set([...sessao.locais, ...Object.keys(cashoutsDoDia)])]
+          const detalhesLocais = locaisCashout
+            .map((local) => ({ local, valor: Number(cashoutsDoDia[local]) || 0 }))
+            .filter(({ valor }) => valor > 0)
           const diaTravado = Boolean(diasBloqueados[dataSessao])
+          const corNetSessao = netSessao >= 0 ? '#15803D' : '#DC2626'
+          const locaisDisponiveis = locaisCadastrados.filter((local) => !sessao.locais.includes(local))
 
           return (
             <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
               {/* CABEÇALHO DO DIA */}
               <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta]}>
-                <View style={styles.sessaoBadgeDia}>
-                  <Text style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>Sessão: {dataSessao}</Text>
+                <View style={{ flex: 1, minWidth: 100, gap: 5 }}>
+                  <Text numberOfLines={1} style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>{formatarDataPoker(dataSessao, mesBaseSessao)}</Text>
+                  <Text style={styles.sessaoEntradasBadge}>
+                    {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
+                  </Text>
+                </View>
+                <View style={[styles.netSessaoHeader, diaTravado ? styles.netSessaoHeaderFechada : styles.netSessaoHeaderAberta]}>
+                    <Text style={styles.netSessaoHeaderLabel}>Resultado:</Text>
+                  <View style={styles.netSessaoHeaderValueRow}>
+                    <Ionicons name={netSessao >= 0 ? 'trending-up' : 'trending-down'} size={14} color={corNetSessao} />
+                    <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.netSessaoHeaderValue, { color: corNetSessao }]}>
+                      {netSessao >= 0 ? '+' : ''}{formatCurrency(netSessao)}
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.sessaoTopActions}>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={diaTravado ? `Reabrir dia ${dataSessao}` : `Travar dia ${dataSessao}`}
+                    accessibilityLabel={diaTravado ? `Reabrir dia ${formatarDataPoker(dataSessao, mesBaseSessao)}` : `Travar dia ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
                     style={[styles.sessaoLockButton, diaTravado && styles.sessaoLockButtonActive]}
                     onPress={() => void alternarBloqueioDia(dataSessao, !diaTravado)}
                   >
@@ -851,42 +861,27 @@ export function PokerScreen() {
                   </TouchableOpacity>
                   {!diaTravado && <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={`Excluir a sessão ${dataSessao}`}
+                    accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
                     style={styles.sessionDeleteButton}
                     onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
                   >
                     <Ionicons name="trash-outline" size={15} color="#DC2626" />
                   </TouchableOpacity>}
-                  <Text style={styles.sessaoEntradasBadge}>
-                    {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
-                  </Text>
                 </View>
               </View>
 
               {/* ======================================================== */}
-              {/* BOX DE RESUMO DA SESSÃO (GRADE 2x2 RESPONSIVA) */}
+              {/* RESUMO DA SESSÃO */}
               {/* ======================================================== */}
-              <View style={styles.resumoSessaoEmCimaContainer}>
+                  <View style={styles.resumoSessaoEmCimaContainer}>
                 <View style={styles.resumoGridCards}>
-                  {/* Linha 1: BuyIN e Taxa */}
                   <View style={styles.resumoGridRow}>
-                    <View style={styles.resumoMiniBox}>
-                      <Text style={styles.resumoMiniLabel}>BuyIN</Text>
-                      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.resumoMiniValor}>
-                        {formatCurrency(buyInSessao)}
-                      </Text>
+                    <View style={[styles.resumoMiniBox, styles.resumoBuyInBox]}>
+                      <Text style={styles.resumoMiniLabel}>BUYIN</Text>
+                      <Text numberOfLines={1} adjustsFontSizeToFit style={styles.resumoMiniValor}>{formatCurrency(buyInSessao)}</Text>
+                      <Text numberOfLines={1} style={styles.resumoBuyInTaxa}>Taxas: {formatCurrency(taxaSessao)}</Text>
                     </View>
 
-                    <View style={styles.resumoMiniBox}>
-                      <Text style={styles.resumoMiniLabel}>Taxa</Text>
-                      <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.resumoMiniValor, { color: '#B45309' }]}>
-                        {formatCurrency(taxaSessao)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Linha 2: CASHout (editável) e NET */}
-                  <View style={[styles.resumoGridRow, { marginTop: 8 }]}>
                     <TouchableOpacity
                       style={[styles.cashoutMiniBoxAmarelo, diaTravado && styles.cashoutMiniBoxFechada]}
                       disabled={diaTravado}
@@ -899,36 +894,14 @@ export function PokerScreen() {
                       <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.cashoutMiniValor, diaTravado && styles.cashoutMiniValorFechado]}>
                         {formatCurrency(cashoutTotalSessao)}
                       </Text>
-                      {detalhesLocais ? (
-                        <Text numberOfLines={1} style={[styles.cashoutDetalhesTexto, diaTravado && styles.cashoutDetalhesTextoFechado]}>
-                          {detalhesLocais}
-                        </Text>
+                      {detalhesLocais.length > 0 ? (
+                        <View style={styles.cashoutDetalhesLista}>
+                          {detalhesLocais.map(({ local, valor }) => <Text key={local} numberOfLines={1} style={[styles.cashoutDetalhesTexto, diaTravado && styles.cashoutDetalhesTextoFechado]}>{local}: {formatCurrency(valor)}</Text>)}
+                        </View>
                       ) : (
                         <Text style={[styles.cashoutDetalhesTexto, diaTravado && styles.cashoutDetalhesTextoFechado]}>{diaTravado ? 'Dia travado' : 'Toque p/ editar por local'}</Text>
                       )}
                     </TouchableOpacity>
-
-                    <View
-                      style={[
-                        styles.resumoMiniBox,
-                        {
-                          borderLeftWidth: 3.5,
-                          borderLeftColor: netSessao >= 0 ? '#16A34A' : '#DC2626'
-                        }
-                      ]}
-                    >
-                      <Text style={styles.resumoMiniLabel}>NET (Sessão)</Text>
-                      <Text
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        style={[
-                          styles.resumoMiniValor,
-                          { color: netSessao >= 0 ? '#15803D' : '#DC2626', fontWeight: '900' }
-                        ]}
-                      >
-                        {netSessao >= 0 ? `+${formatCurrency(netSessao)}` : formatCurrency(netSessao)}
-                      </Text>
-                    </View>
                   </View>
                 </View>
               </View>
@@ -949,16 +922,16 @@ export function PokerScreen() {
                       {LOGOS_CLUBES[local.toLowerCase()] && <Image accessibilityLabel={`Logo ${local}`} source={LOGOS_CLUBES[local.toLowerCase()]} resizeMode="contain" style={{ width: 40, height: 40 }} />}
                       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                         <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
-                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
+                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>{netLocal >= 0 ? '+' : ''}{formatCurrencyInteira(netLocal)}</Text>
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 16 }}>
                       <View style={{ alignItems: 'center', gap: 3 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.82)' }}>Buy-in</Text>
                         <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>{formatCurrency(buyInLocal)}</Text>
                       </View>
                       <View style={{ alignItems: 'center', gap: 3 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.82)' }}>Cashout</Text>
                         <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>{formatCurrency(cashoutLocal)}</Text>
                       </View>
                     </View>
@@ -1004,9 +977,8 @@ export function PokerScreen() {
               {!diaTravado && <View style={styles.sessaoBottomBar}>
                 <Text style={styles.inputLabel}>Adicionar outro local</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {locaisCadastrados.filter((local) => !sessao.locais.includes(local)).map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>)}
+                  {locaisDisponiveis.length > 0 ? locaisDisponiveis.map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>) : <Text style={{ color: colors.muted, fontSize: 12 }}>Todos os locais cadastrados já estão nesta sessão.</Text>}
                 </View>
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}><TextInput style={[styles.input, { flex: 1, minHeight: 40 }]} value={novoLocalSessao} onChangeText={setNovoLocalSessao} placeholder="Novo local" editable={!diaTravado} /><TouchableOpacity disabled={diaTravado || !novoLocalSessao.trim()} style={[styles.btnAdicionarNaSessao, (diaTravado || !novoLocalSessao.trim()) && { opacity: 0.5 }]} onPress={() => void cadastrarLocalNaSessao(mesBaseSessao, dataSessao)}><Ionicons name="add" size={16} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>Adicionar</Text></TouchableOpacity></View>
               </View>}
             </View>
           )
@@ -1069,7 +1041,7 @@ export function PokerScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitulo}>CASHout - Sessão {cashoutDataAlvo}</Text>
+                <Text style={styles.modalTitulo}>CASHout - Sessão {formatarDataPoker(cashoutDataAlvo, cashoutMesBaseAlvo)}</Text>
                 <Text style={styles.modalSub}>
                   Informe o valor retirado em cada local (a soma será o CASHout total):
                 </Text>
@@ -1102,9 +1074,15 @@ export function PokerScreen() {
             {/* SOMA TOTAL DOS INPUTS EM TEMPO REAL */}
             <View style={styles.somaCashoutCard}>
               <Text style={styles.somaCashoutLabel}>Total CASHout da Sessão:</Text>
-              <Text style={styles.somaCashoutValor}>
-                {formatCurrency(somaCashoutModal)}
-              </Text>
+              <TextInput
+                accessibilityLabel="Total de Cashout da sessão, somente leitura"
+                accessibilityHint="O total é calculado automaticamente com base nos valores por local."
+                style={styles.somaCashoutValor}
+                value={formatCurrency(somaCashoutModal)}
+                editable={false}
+                selectTextOnFocus={false}
+                showSoftInputOnFocus={false}
+              />
             </View>
 
             <View style={styles.modalBotoes}>
@@ -1253,7 +1231,7 @@ export function PokerScreen() {
                     setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase))
                     setCalendarioAberto((aberto) => !aberto)
                   }}>
-                    <Text numberOfLines={1} style={styles.formMonthButtonText}>{formDataCartao}</Text>
+                    <Text numberOfLines={1} style={styles.formMonthButtonText}>{formatarDataPoker(formDataCartao, formMesBase)}</Text>
                     <Ionicons name="calendar-outline" size={16} color={colors.primary} />
                   </TouchableOpacity>
                 </View>
@@ -1365,7 +1343,7 @@ export function PokerScreen() {
           <View style={styles.modalCard}>
             <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
             <Text style={styles.modalTitulo}>Excluir lançamento?</Text>
-            <Text style={styles.modalSub}>O lançamento de {itemExcluirConfirmar?.data_cartao} será removido permanentemente.</Text>
+            <Text style={styles.modalSub}>O lançamento de {formatarDataPoker(itemExcluirConfirmar?.data_cartao, itemExcluirConfirmar?.mes_base)} será removido permanentemente.</Text>
             <View style={styles.modalBotoes}>
               <TouchableOpacity style={styles.btnCancelar} onPress={() => setItemExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const id = itemExcluirConfirmar?.id; setItemExcluirConfirmar(null); if (id) void excluirEntrada(id) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir lançamento</Text></TouchableOpacity>
@@ -1378,7 +1356,7 @@ export function PokerScreen() {
           <View style={styles.modalCard}>
             <View style={styles.deleteConfirmIcon}><Ionicons name="trash-outline" size={23} color="#DC2626" /></View>
             <Text style={styles.modalTitulo}>Excluir a sessão inteira?</Text>
-            <Text style={styles.modalSub}>Serão removidos {sessaoExcluirConfirmar?.itens.length || 0} lançamentos e o cash out de {sessaoExcluirConfirmar?.dataCartao}. Essa ação não pode ser desfeita.</Text>
+            <Text style={styles.modalSub}>Serão removidos {sessaoExcluirConfirmar?.itens.length || 0} lançamentos e o cash out de {formatarDataPoker(sessaoExcluirConfirmar?.dataCartao, sessaoExcluirConfirmar?.mesBase)}. Essa ação não pode ser desfeita.</Text>
             <View style={styles.modalBotoes}>
               <TouchableOpacity style={styles.btnCancelar} onPress={() => setSessaoExcluirConfirmar(null)}><Text style={styles.btnCancelarTexto}>Cancelar</Text></TouchableOpacity>
               <TouchableOpacity style={styles.btnExcluirConfirmar} onPress={() => { const alvo = sessaoExcluirConfirmar; setSessaoExcluirConfirmar(null); if (alvo) void excluirSessaoCompleta(alvo.dataCartao, alvo.mesBase) }}><Text style={styles.btnExcluirConfirmarTexto}>Excluir sessão</Text></TouchableOpacity>
@@ -1495,7 +1473,7 @@ const styles = StyleSheet.create({
     color: colors.text
   },
   kpiValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '900',
     marginVertical: 2
   },
@@ -1657,11 +1635,13 @@ const styles = StyleSheet.create({
   },
   sessaoTopBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
     paddingHorizontal: 14,
     paddingVertical: 10,
+    gap: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
   },
@@ -1677,6 +1657,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9
+  },
+  netSessaoHeader: {
+    minWidth: 112,
+    flexShrink: 1,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    gap: 2
+  },
+  netSessaoHeaderFechada: {
+    borderColor: '#BFDBFE'
+  },
+  netSessaoHeaderAberta: {
+    borderColor: '#BBF7D0'
+  },
+  netSessaoHeaderLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textSecondary,
+    textAlign: 'center'
+  },
+  netSessaoHeaderValue: {
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  netSessaoHeaderValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5
   },
   sessaoLockButton: {
     flexDirection: 'row',
@@ -1729,12 +1742,13 @@ const styles = StyleSheet.create({
     color: '#1E40AF'
   },
   sessaoEntradasBadge: {
-    fontSize: 11,
+    alignSelf: 'flex-start',
+    fontSize: 9,
     fontWeight: '600',
     color: colors.muted,
     backgroundColor: colors.background,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border
@@ -1774,6 +1788,16 @@ const styles = StyleSheet.create({
     padding: 8,
     borderWidth: 1,
     borderColor: colors.border
+  },
+  resumoBuyInBox: {
+    justifyContent: 'center',
+    minHeight: 78
+  },
+  resumoBuyInTaxa: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.muted,
+    marginTop: 3
   },
   resumoMiniLabel: {
     fontSize: 10,
@@ -1827,6 +1851,10 @@ const styles = StyleSheet.create({
     color: '#854D0E',
     marginTop: 2,
     fontWeight: '600'
+  },
+  cashoutDetalhesLista: {
+    marginTop: 2,
+    gap: 1
   },
   cashoutDetalhesTextoFechado: {
     color: '#1E40AF'
@@ -1906,7 +1934,7 @@ const styles = StyleSheet.create({
   tdEntradaValor: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#713F12'
+    color: '#000000'
   },
   tdTaxaWrapper: {
     alignItems: 'flex-end',
@@ -2040,9 +2068,15 @@ const styles = StyleSheet.create({
     color: '#713F12'
   },
   somaCashoutValor: {
+    minWidth: 128,
+    height: 28,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
     fontSize: 17,
     fontWeight: '900',
-    color: '#713F12'
+    color: '#713F12',
+    textAlign: 'right'
   },
   dropdownOption: {
     flexDirection: 'row',
