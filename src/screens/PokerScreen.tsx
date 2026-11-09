@@ -44,7 +44,6 @@ import {
   salvarLancamentoPoker,
   salvarLocaisPoker,
   salvarCartoesPoker,
-  salvarTaxaPadraoPoker,
   carregarFotosPoker,
   adicionarFotoPoker,
   excluirFotoPoker,
@@ -176,6 +175,7 @@ function rotuloMesBase(valor: string) {
 }
 
 export function PokerScreen() {
+  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido'>('detalhado')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
   const [diasBloqueados, setDiasBloqueados] = useState<Record<string, boolean>>({})
@@ -219,8 +219,6 @@ export function PokerScreen() {
   const [cashoutInputsPorLocal, setCashoutInputsPorLocal] = useState<Record<string, string>>({})
 
   // Modal para Editar Taxa %
-  const [modalTaxaVisible, setModalTaxaVisible] = useState(false)
-  const [taxaInputVal, setTaxaInputVal] = useState('5')
 
   // Formulário de Nova Entrada
   const [formMesBase, setFormMesBase] = useState(mesBaseHojeKey())
@@ -455,26 +453,6 @@ export function PokerScreen() {
     }
 
     selecionarOpcaoDropdown(novo)
-  }
-
-  // ==========================================
-  // HANDLERS TAXA % PADRÃO
-  // ==========================================
-  const salvarTaxaModal = () => {
-    const t = parseFloat(taxaInputVal.replace(',', '.')) || 5
-    setTaxaPadraoPercentual(t)
-    salvarTaxaPadraoPoker(t)
-    setModalTaxaVisible(false)
-    notify('Taxa Padrão', `Taxa padrão definida para ${t}%`)
-
-    // Se o modal de novo registro estiver aberto com taxa ativa, recalcula
-    if (aplicarTaxa && formValor) {
-      const v = parseFloat(formValor.replace(',', '.')) || 0
-      if (v > 0) {
-        const calculada = Math.round((v * (t / 100)) * 100) / 100
-        setFormTaxa(calculada.toFixed(2).replace('.', ','))
-      }
-    }
   }
 
   // ==========================================
@@ -758,14 +736,20 @@ export function PokerScreen() {
       >
         {/* Topo / Título & Botão Nova Entrada */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerTitleGroup}>
             <Text style={styles.title}>Poker</Text>
+            <View style={styles.viewModeSwitch}>
+              <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
+                <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
+                <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
+                <Ionicons name="grid-outline" size={15} color={visualizacaoSessoes === 'resumido' ? '#fff' : colors.primary} />
+                <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumido</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.btnTaxaTopo} onPress={() => { setTaxaInputVal(taxaPadraoPercentual.toString()); setModalTaxaVisible(true) }}>
-              <Ionicons name="pricetag-outline" size={15} color="#854D0E" />
-              <Text style={styles.btnTaxaTopoTexto}>{taxaPadraoPercentual}%</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={[styles.btnNovoTopo, { width: 42, justifyContent: 'center' }]} accessibilityRole="button" accessibilityLabel="Criar sessão" onPress={abrirNovaSessao}>
               <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
@@ -793,7 +777,7 @@ export function PokerScreen() {
           <View style={[styles.kpiCard, { borderLeftColor: totalNetGeral >= 0 ? '#16A34A' : '#DC2626' }]}>
             <Text style={styles.kpiLabel}>Líquido (Net)</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>
-              {totalNetGeral >= 0 ? `+${formatValorKpi(totalNetGeral)}` : formatValorKpi(totalNetGeral)}
+              {formatValorKpi(totalNetGeral)}
             </Text>
             <Text style={styles.kpiHint}>Resultado do mês</Text>
           </View>
@@ -846,7 +830,7 @@ export function PokerScreen() {
                   <View style={styles.netSessaoHeaderValueRow}>
                     <Ionicons name={netSessao >= 0 ? 'trending-up' : 'trending-down'} size={14} color={corNetSessao} />
                     <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.netSessaoHeaderValue, { color: corNetSessao }]}>
-                      {netSessao >= 0 ? '+' : ''}{formatCurrency(netSessao)}
+                      {formatCurrency(netSessao)}
                     </Text>
                   </View>
                 </View>
@@ -873,6 +857,7 @@ export function PokerScreen() {
               {/* ======================================================== */}
               {/* RESUMO DA SESSÃO */}
               {/* ======================================================== */}
+              {visualizacaoSessoes === 'detalhado' && <>
                   <View style={styles.resumoSessaoEmCimaContainer}>
                 <View style={styles.resumoGridCards}>
                   <View style={styles.resumoGridRow}>
@@ -905,6 +890,7 @@ export function PokerScreen() {
                   </View>
                 </View>
               </View>
+              </>}
 
               {/* Dica de rolagem lateral para celular */}
               {sessao.locais.map((local) => {
@@ -922,7 +908,7 @@ export function PokerScreen() {
                       {LOGOS_CLUBES[local.toLowerCase()] && <Image accessibilityLabel={`Logo ${local}`} source={LOGOS_CLUBES[local.toLowerCase()]} resizeMode="contain" style={{ width: 40, height: 40 }} />}
                       <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                         <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
-                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>{netLocal >= 0 ? '+' : ''}{formatCurrencyInteira(netLocal)}</Text>
+                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>{formatCurrencyInteira(netLocal)}</Text>
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 16 }}>
@@ -935,7 +921,7 @@ export function PokerScreen() {
                         <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>{formatCurrency(cashoutLocal)}</Text>
                       </View>
                     </View>
-                    {!diaTravado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
+                    {!diaTravado && visualizacaoSessoes === 'detalhado' && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
                       <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
                         <Ionicons name="add" size={23} color={corDoLocal} />
                       </TouchableOpacity>
@@ -944,7 +930,7 @@ export function PokerScreen() {
                       </TouchableOpacity>
                     </View>}
                   </View>
-                  <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
+                  {visualizacaoSessoes === 'detalhado' && <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
                     <View style={styles.tableHeader}>
                       <Text style={[styles.th, { flex: 1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: 90 }]}>Buy-in</Text><Text style={[styles.th, styles.thRight, { width: 80 }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
                     </View>
@@ -955,26 +941,26 @@ export function PokerScreen() {
                       {diaTravado ? <View style={{ width: 42 }} /> : <TouchableOpacity accessibilityLabel="Excluir lançamento" style={styles.rowDeleteButton} onPress={() => setItemExcluirConfirmar(item)}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity>}
                     </View>)}
                     {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
-                  </View>
-                  {(fotosLocal.length > 0 || !diaTravado) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
+                  </View>}
+                  {(fotosLocal.length > 0 || (!diaTravado && visualizacaoSessoes === 'detalhado')) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
                     {fotosLocal.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: 72, height: 72 }}>
+                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: visualizacaoSessoes === 'resumido' ? 58 : 72, height: visualizacaoSessoes === 'resumido' ? 50 : 72 }}>
                         <TouchableOpacity accessibilityRole="imagebutton" accessibilityLabel={`Visualizar ${foto.nome_arquivo}`} onPress={() => setFotoVisualizando(foto)}>
-                          <Image source={{ uri: foto.url }} style={{ width: 72, height: 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
+                          <Image source={{ uri: foto.url }} style={{ width: visualizacaoSessoes === 'resumido' ? 58 : 72, height: visualizacaoSessoes === 'resumido' ? 50 : 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
                         </TouchableOpacity>
-                        {!diaTravado && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
+                        {!diaTravado && visualizacaoSessoes === 'detalhado' && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
                           <Ionicons name="close" size={16} color="#fff" />
                         </TouchableOpacity>}
                       </View>)}
                     </ScrollView>}
-                    {!diaTravado && <TouchableOpacity disabled={enviandoFotosLocal === chaveFotosLocal} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 9, backgroundColor: '#F1F5F9', opacity: enviandoFotosLocal === chaveFotosLocal ? 0.6 : 1 }} onPress={() => void anexarFotosLocal(mesBaseSessao, dataSessao, local)}>
+                    {!diaTravado && visualizacaoSessoes === 'detalhado' && <TouchableOpacity disabled={enviandoFotosLocal === chaveFotosLocal} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 9, backgroundColor: '#F1F5F9', opacity: enviandoFotosLocal === chaveFotosLocal ? 0.6 : 1 }} onPress={() => void anexarFotosLocal(mesBaseSessao, dataSessao, local)}>
                       <Ionicons name={enviandoFotosLocal === chaveFotosLocal ? 'cloud-upload-outline' : 'images-outline'} size={17} color={colors.primary} />
                       <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{enviandoFotosLocal === chaveFotosLocal ? 'Enviando fotos…' : 'Anexar fotos'}</Text>
                     </TouchableOpacity>}
                   </View>}
                 </View>
               })}
-              {!diaTravado && <View style={styles.sessaoBottomBar}>
+              {!diaTravado && visualizacaoSessoes === 'detalhado' && <View style={styles.sessaoBottomBar}>
                 <Text style={styles.inputLabel}>Adicionar outro local</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {locaisDisponiveis.length > 0 ? locaisDisponiveis.map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>) : <Text style={{ color: colors.muted, fontSize: 12 }}>Todos os locais cadastrados já estão nesta sessão.</Text>}
@@ -1156,43 +1142,6 @@ export function PokerScreen() {
             </View>
           </View>
         </View>
-      </Modal>
-
-      {/* ======================================================== */}
-      {/* MODAL TAXA % PADRÃO */}
-      {/* ======================================================== */}
-      <Modal visible={modalTaxaVisible} transparent animationType="fade">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
-        >
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitulo}>Taxa Padrão (%)</Text>
-            <Text style={styles.modalSub}>Informe o percentual padrão da taxa (ex: 5%):</Text>
-
-            <TextInput
-              style={[styles.input, styles.inputAmareloGrande]}
-              placeholder="5"
-              keyboardType="numeric"
-              value={taxaInputVal}
-              onChangeText={setTaxaInputVal}
-              autoFocus
-            />
-
-            <View style={styles.modalBotoes}>
-              <TouchableOpacity
-                style={styles.btnCancelar}
-                onPress={() => setModalTaxaVisible(false)}
-              >
-                <Text style={styles.btnCancelarTexto}>Cancelar</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.btnSalvar} onPress={salvarTaxaModal}>
-                <Text style={styles.btnSalvarTexto}>Salvar Taxa</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* ======================================================== */}
@@ -1392,31 +1341,50 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    rowGap: 8,
     marginBottom: 14
+  },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9
+  },
+  viewModeSwitch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4
+  },
+  viewModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  viewModeButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary
+  },
+  viewModeButtonText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.primary
+  },
+  viewModeButtonTextActive: {
+    color: '#fff'
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7
-  },
-  btnTaxaTopo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: '#FEF08A',
-    borderColor: '#FACC15',
-    borderWidth: 1,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-    borderRadius: 8
-  },
-  btnTaxaTopoTexto: {
-    color: '#854D0E',
-    fontWeight: '800',
-    fontSize: 12
   },
   title: {
     fontSize: 22,
@@ -2338,15 +2306,6 @@ const styles = StyleSheet.create({
     borderColor: '#FACC15',
     fontWeight: '800',
     color: '#713F12'
-  },
-  inputAmareloGrande: {
-    backgroundColor: '#FEF08A',
-    borderColor: '#FACC15',
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#713F12',
-    textAlign: 'center',
-    marginVertical: 10
   },
   checkContinuar: {
     flexDirection: 'row',

@@ -9,7 +9,7 @@ import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
 import { APP_INFO } from '../constants/version'
 import { useModuleAccess } from '../services/ModuleAccessProvider'
-import { carregarCartoesPoker, carregarLocaisPoker, limparCacheDadosRemotos, salvarCartoesPoker, salvarLocaisPoker } from '../services/planilhasService'
+import { carregarCartoesPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, limparCacheDadosRemotos, salvarCartoesPoker, salvarLocaisPoker, salvarTaxaPadraoPoker } from '../services/planilhasService'
 import type { ModuleKey } from '../services/ModuleAccessProvider'
 
 type ConviteRecebido = { convite_id: string; agenda_id: string; agenda_nome: string; remetente: string; criado_em: string }
@@ -34,6 +34,7 @@ export function ConfiguracoesScreen() {
   const [locaisPoker, setLocaisPoker] = useState(carregarLocaisPoker())
   const [novoCartaoPoker, setNovoCartaoPoker] = useState('')
   const [novoLocalPoker, setNovoLocalPoker] = useState('')
+  const [taxaPadraoPoker, setTaxaPadraoPoker] = useState(String(carregarTaxaPadraoPoker()))
 
   const carregar = useCallback(async () => {
     const [resRecebidos, resEnviados, resCor, resHorario] = await Promise.all([
@@ -130,6 +131,17 @@ export function ConfiguracoesScreen() {
     }
   }
 
+  function salvarTaxaPoker() {
+    const taxa = Number(taxaPadraoPoker.trim().replace(',', '.'))
+    if (!Number.isFinite(taxa) || taxa < 0 || taxa > 100) {
+      notify('Taxa inválida', 'Informe um percentual entre 0 e 100.')
+      return
+    }
+    salvarTaxaPadraoPoker(taxa)
+    setTaxaPadraoPoker(String(taxa))
+    notify('Taxa padrão salva', `Novos lançamentos usarão ${taxa}%.`)
+  }
+
   return <View style={styles.page}>
     <View style={styles.fixedHeader}>
       <Text style={styles.title}>Configurações</Text>
@@ -163,6 +175,10 @@ export function ConfiguracoesScreen() {
       </>}
 
       {categoria === 'poker' && <>
+        <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="pricetag-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Taxa padrão</Text><Text style={styles.itemSub}>Percentual usado ao ativar a taxa em um novo lançamento.</Text></View></View>
+          <View style={styles.addPokerRow}><TextInput value={taxaPadraoPoker} onChangeText={setTaxaPadraoPoker} placeholder="5" placeholderTextColor={colors.muted} keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} /><Text style={styles.pokerPercent}>%</Text></View>
+          <Button title="Salvar taxa padrão" onPress={salvarTaxaPoker} />
+        </View>
         <View style={styles.card}><View style={styles.heading}><View style={[styles.icon, { backgroundColor: '#F3E8FF' }]}><Ionicons name="card-outline" size={20} color="#77158D" /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Cartões</Text><Text style={styles.itemSub}>Opções disponíveis nos lançamentos</Text></View></View>
           <View style={styles.pokerOptions}>{cartoesPoker.map((nome) => <View key={nome} style={styles.pokerOption}><Text style={styles.pokerOptionText}>{nome}</Text><TouchableOpacity accessibilityLabel={`Remover cartão ${nome}`} onPress={() => removerOpcaoPoker('cartao', nome)}><Ionicons name="close-circle" size={18} color={colors.muted} /></TouchableOpacity></View>)}</View>
           <View style={styles.addPokerRow}><TextInput value={novoCartaoPoker} onChangeText={setNovoCartaoPoker} placeholder="Nome do cartão" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} onSubmitEditing={() => adicionarOpcaoPoker('cartao')} /><TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar cartão" style={styles.addPokerButton} onPress={() => adicionarOpcaoPoker('cartao')}><Ionicons name="add" size={20} color="#fff" /></TouchableOpacity></View>
@@ -196,5 +212,5 @@ const styles = StyleSheet.create({
   versionValue: { fontSize: 12, fontWeight: '600', color: colors.text },
   versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.borderFocus },
   versionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary }
-  ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surfaceHover, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }
+  ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surfaceHover, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, pokerPercent: { color: colors.textSecondary, fontSize: 15, fontWeight: '800', marginHorizontal: 4 }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }
 })
