@@ -299,9 +299,9 @@ export function CartoesControleScreen() {
             <Text style={styles.kpiPillLabel}>Total MA:</Text>
             <Text style={[styles.kpiPillValor, { color: '#0F766E' }]}>{formatCurrency(totalMA)}</Text>
           </View>
-          <View style={[styles.kpiPill, { backgroundColor: '#EFF6FF', borderColor: '#DBEAFE' }]}>
+          <View style={[styles.kpiPill, { backgroundColor: '#EDF4E9', borderColor: '#D6E6D7' }]}>
             <Text style={styles.kpiPillLabel}>Sem MA:</Text>
-            <Text style={[styles.kpiPillValor, { color: '#1D4ED8' }]}>{formatCurrency(totalSemMA)}</Text>
+            <Text style={[styles.kpiPillValor, { color: '#173F35' }]}>{formatCurrency(totalSemMA)}</Text>
           </View>
         </View>
 
@@ -654,7 +654,7 @@ const styles = StyleSheet.create({
   cellTextSemMA: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2563EB'
+    color: '#173F35'
   },
   cellMuted: {
     fontSize: 12,
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
   footerValueSemMA: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#2563EB'
+    color: '#173F35'
   },
   btnAdicionarLinha: {
     flexDirection: 'row',

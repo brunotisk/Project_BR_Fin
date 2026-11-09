@@ -17,7 +17,7 @@ const dataHoraDeploy = APP_DEPLOYED_AT_ISO
   : 'Disponível após o próximo deploy'
 
 export const APP_INFO = {
-  name: 'App Financeiro',
+  name: 'Plenna',
   version: APP_VERSION,
   buildDate: dataHoraDeploy,
   buildId: APP_BUILD_ID,

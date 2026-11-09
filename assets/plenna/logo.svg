@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300">
+<title>Plenna — Finanças, Agenda e Tarefas</title>
+<g transform="translate(12 12) scale(.54)"><rect width="512" height="512" rx="112" fill="#173F35"/>
+<g transform="translate(74 83)">
+ <path d="M48 70h268a24 24 0 0 1 24 24v180a24 24 0 0 1-24 24H48a24 24 0 0 1-24-24V94a24 24 0 0 1 24-24Z" fill="#F5F3EA"/>
+ <path d="M24 126h316" stroke="#173F35" stroke-width="18" stroke-linecap="round"/>
+ <path d="M91 43v55M267 43v55" stroke="#173F35" stroke-width="25" stroke-linecap="round"/>
+ <g fill="#173F35"><rect x="62" y="157" width="38" height="34" rx="8"/><rect x="119" y="157" width="38" height="34" rx="8"/><rect x="62" y="211" width="38" height="34" rx="8"/></g>
+ <rect x="174" y="148" width="112" height="98" rx="26" fill="#C7E66B"/>
+ <path d="m197 196 23 22 48-52" fill="none" stroke="#173F35" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+ <path d="M257 282h34v-55h-34zM304 282h34v-88h-34z" fill="#8DBB9A"/>
+ <path d="M37 287c53 31 126 29 188 0" fill="none" stroke="#C7E66B" stroke-width="10" stroke-linecap="round"/>
+</g></g>
+<text x="315" y="153" font-family="Arial,Helvetica,sans-serif" font-size="112" font-weight="700" letter-spacing="-5" fill="#173F35">Plenna</text>
+<text x="322" y="205" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="600" letter-spacing="5" fill="#29332F">FINANÇAS • AGENDA • TAREFAS</text></svg>

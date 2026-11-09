@@ -19,7 +19,7 @@ const TIPOS_CONTA: { label: string; value: TipoConta }[] = [
 ]
 
 const CORES_SUGERIDAS = [
-  '#2563EB', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444',
+  '#173F35', '#8DBB9A', '#C7E66B', '#8B5CF6', '#F59E0B', '#EF4444',
   '#EC4899', '#06B6D4', '#64748B', '#14B8A6', '#F97316'
 ]
 

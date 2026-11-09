@@ -1,5 +1,5 @@
-// Service Worker para App Financeiro (PWA)
-const CACHE_NAME = 'app-fin-v1';
+// Service Worker para Plenna (PWA)
+const CACHE_NAME = 'plenna-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

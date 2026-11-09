@@ -1,16 +1,24 @@
 {
   "expo": {
-    "name": "App Financeiro",
+    "name": "Plenna",
     "slug": "app-financeiro",
     "version": "0.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "appfinanceiro",
+    "icon": "./assets/plenna/icon-512.png",
+    "splash": {
+      "image": "./assets/plenna/splash-screen.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F3EA"
+    },
     "ios": { "supportsTablet": true },
     "android": { "package": "com.appfinanceiro.app" },
     "web": {
       "bundler": "metro",
-      "favicon": "./public/favicon.ico"
+      "name": "Plenna",
+      "shortName": "Plenna",
+      "favicon": "./public/favicon.png"
     }
   }
 }

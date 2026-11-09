@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { Image, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../services/supabase'
@@ -14,14 +14,14 @@ import type { ModuleKey } from '../services/ModuleAccessProvider'
 
 type ConviteRecebido = { convite_id: string; agenda_id: string; agenda_nome: string; remetente: string; criado_em: string }
 type ConviteEnviado = { id: string; email: string; status: string; criado_em: string }
-const CORES = ['#2563EB', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#64748B']
+const CORES = ['#173F35', '#8DBB9A', '#C7E66B', '#EF4444', '#F59E0B', '#8B5CF6', '#EC4899', '#64748B']
 type CategoriaConfiguracao = 'agenda' | 'poker' | 'admin'
 
 export function ConfiguracoesScreen() {
   const { session, signOut } = useAuth()
   const { acesso, carregado: acessoCarregado, definirAcesso } = useModuleAccess()
   const [email, setEmail] = useState('')
-  const [cor, setCor] = useState('#2563EB')
+  const [cor, setCor] = useState('#173F35')
   const [recebidos, setRecebidos] = useState<ConviteRecebido[]>([])
   const [enviados, setEnviados] = useState<ConviteEnviado[]>([])
   const [enviando, setEnviando] = useState(false)
@@ -62,7 +62,7 @@ export function ConfiguracoesScreen() {
     setEmail('')
     notify('Convite criado', 'Escolha como avisar a pessoa. Ela poderá aceitar em Configurações ao entrar no app com este e-mail.')
     try {
-      await Share.share({ message: `Olá! Te convidei para compartilhar uma agenda no App Financeiro. Abra o app ou crie sua conta com ${emailConvidado} e aceite o convite na aba Configurações.` })
+      await Share.share({ message: `Olá! Te convidei para compartilhar uma agenda no Plenna. Abra o app ou crie sua conta com ${emailConvidado} e aceite o convite na aba Configurações.` })
     } catch { /* O convite continua salvo mesmo se o compartilhamento for fechado. */ }
     void carregar()
   }
@@ -135,7 +135,7 @@ export function ConfiguracoesScreen() {
       <Text style={styles.title}>Configurações</Text>
       <Text style={styles.subtitle}>Preferências, compartilhamento e dados do aplicativo.</Text>
       <View style={styles.card}>
-        <View style={styles.heading}><View style={styles.icon}><Ionicons name="information-circle-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Sobre o Aplicativo</Text><Text style={styles.itemSub}>{APP_INFO.name}</Text></View><View style={styles.versionBadge}><Text style={styles.versionBadgeText}>v{APP_INFO.version}</Text></View></View>
+        <View style={styles.heading}><Image source={require('../../assets/plenna/icon-192.png')} resizeMode="contain" style={{ width: 40, height: 40, borderRadius: 11 }} /><View style={styles.headingText}><Text style={styles.sectionTitle}>Sobre o Aplicativo</Text><Text style={styles.itemSub}>{APP_INFO.name}</Text></View><View style={styles.versionBadge}><Text style={styles.versionBadgeText}>v{APP_INFO.version}</Text></View></View>
         <View style={styles.versionContainer}>
           <View style={styles.versionRow}><Text style={styles.versionLabel}>Último deploy · São Paulo</Text><Text style={styles.versionValue}>{APP_INFO.buildDate}</Text></View>
           <View style={styles.versionRow}><Text style={styles.versionLabel}>Ambiente</Text><Text style={styles.versionValue}>{APP_INFO.env}</Text></View>
@@ -190,11 +190,11 @@ const styles = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 13 }, heading: { flexDirection: 'row', alignItems: 'center', gap: 11 }, icon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight }, headingText: { flex: 1, gap: 3 }, sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.text }, itemSub: { fontSize: 12, color: colors.muted },
   accessRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 58, paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }, accessInfo: { flex: 1, gap: 3 }, accessTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
   timeLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600', marginTop: 3 }, hourOptions: { flexDirection: 'row', gap: 7 }, hourOption: { minWidth: 38, paddingVertical: 8, alignItems: 'center', borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, hourOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, hourOptionText: { color: colors.muted, fontSize: 12, fontWeight: '600' }, hourOptionTextActive: { color: colors.primary, fontWeight: '700' }, input: { minHeight: 46, borderWidth: 1, borderColor: colors.border, borderRadius: 10, paddingHorizontal: 13, color: colors.text, backgroundColor: colors.surface, fontSize: 14 }, hint: { fontSize: 11, lineHeight: 16, color: colors.muted }, sentList: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, gap: 9 }, listTitle: { fontSize: 12, fontWeight: '700', color: colors.text }, sentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, status: { fontSize: 10, fontWeight: '700', color: colors.warning }, accepted: { color: colors.income }, colors: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 4 }, colorOption: { width: 31, height: 31, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, colorSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.08 }] }, invite: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderTopColor: colors.border }, inviteInfo: { flex: 1, gap: 3 }, itemTitle: { fontSize: 13, color: colors.text, fontWeight: '700' }, accept: { backgroundColor: colors.primary, paddingHorizontal: 13, paddingVertical: 8, borderRadius: 9 }, acceptText: { color: '#fff', fontSize: 12, fontWeight: '700' }, signOut: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, signOutText: { color: colors.expense, fontSize: 13, fontWeight: '700' },
-  versionContainer: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 8 },
+  versionContainer: { backgroundColor: colors.surfaceHover, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 8 },
   versionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   versionLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
   versionValue: { fontSize: 12, fontWeight: '600', color: colors.text },
-  versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#BFDBFE' },
+  versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.borderFocus },
   versionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary }
-  ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }
+  ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surfaceHover, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }
 })
