@@ -944,16 +944,22 @@ export function PokerScreen() {
                 const chaveFotosLocal = `${mesBaseSessao}|${dataSessao}|${local}`
                 const corDoLocal = local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569'
                 return <View key={local} style={{ marginHorizontal: 12, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
-                  <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
                       {LOGOS_CLUBES[local.toLowerCase()] && <Image accessibilityLabel={`Logo ${local}`} source={LOGOS_CLUBES[local.toLowerCase()]} resizeMode="contain" style={{ width: 40, height: 40 }} />}
-                      <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                         <Text numberOfLines={1} style={{ fontWeight: '800', color: '#fff' }}>{local}</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 3, marginTop: 3 }}>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in {formatCurrency(buyInLocal)}</Text>
-                          <Text style={{ fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout {formatCurrency(cashoutLocal)}</Text>
-                          <Text style={{ fontSize: 10, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
-                        </View>
+                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '800', color: netLocal >= 0 ? '#BBF7D0' : '#FECACA' }}>NET {netLocal >= 0 ? '+' : ''}{formatCurrency(netLocal)}</Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', columnGap: 16 }}>
+                      <View style={{ alignItems: 'center', gap: 3 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Buy-in</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>{formatCurrency(buyInLocal)}</Text>
+                      </View>
+                      <View style={{ alignItems: 'center', gap: 3 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>Cashout</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.82)' }}>{formatCurrency(cashoutLocal)}</Text>
                       </View>
                     </View>
                     {!diaTravado && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
