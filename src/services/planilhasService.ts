@@ -138,8 +138,22 @@ export const LANCAMENTOS_POKER_INICIAIS: LancamentoPoker[] = [
 
 export type CashoutPorLocal = Record<string, number>
 export type CashoutsPokerMap = Record<string, CashoutPorLocal>
+export type FormaCashoutPoker = 'PIX' | 'Dinheiro'
+type CashoutComFormas = CashoutPorLocal & { __formas?: Record<string, FormaCashoutPoker> }
+
+export function obterFormasCashoutPoker(cashouts?: CashoutPorLocal): Record<string, FormaCashoutPoker> {
+  return (cashouts as CashoutComFormas | undefined)?.__formas || {}
+}
+
+export function incluirFormasCashoutPoker(
+  cashouts: CashoutPorLocal,
+  formas: Record<string, FormaCashoutPoker>
+): CashoutPorLocal {
+  return { ...cashouts, __formas: formas } as CashoutComFormas
+}
 export type SessaoPoker = { id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em?: string }
 export type FotoPoker = { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string; url: string }
+export type LocalPokerConfig = { nome: string; cor: string; storage_path?: string; aliases?: string[]; fotoUrl?: string }
 
 export const CASHOUTS_INICIAIS: CashoutsPokerMap = {
   '31/out': {
@@ -175,7 +189,9 @@ const STORAGE_KEYS = {
   CASHOUTS: '@fin_poker_cashouts',
   DIAS_POKER_BLOQUEADOS: '@fin_poker_dias_bloqueados',
   TAXA_PADRAO: '@fin_poker_taxa_padrao',
+  FORMATO_NEGATIVO_POKER: '@fin_poker_formato_negativo',
   LOCAIS: '@fin_poker_locais',
+  LOCAIS_CONFIG: '@fin_poker_locais_config',
   CARTOES_POKER: '@fin_poker_cartoes',
   MES_SELECIONADO: '@fin_mes_fechamento_selecionado'
 }
@@ -772,7 +788,7 @@ export async function sincronizarCashoutsPoker(): Promise<CashoutsPokerMap> {
 
 export function obterTotalCashoutSessao(cashoutsDaSessao?: CashoutPorLocal): number {
   if (!cashoutsDaSessao) return 0
-  return Object.values(cashoutsDaSessao).reduce((acc, v) => acc + (Number(v) || 0), 0)
+  return Object.entries(cashoutsDaSessao).reduce((acc, [key, value]) => key === '__formas' ? acc : acc + (Number(value) || 0), 0)
 }
 
 export async function salvarCashoutsDaSessao(
@@ -818,12 +834,85 @@ export function salvarTaxaPadraoPoker(taxa: number): void {
   setLocalItem(STORAGE_KEYS.TAXA_PADRAO, taxa)
 }
 
+export type FormatoNegativoPoker = 'menos' | 'parenteses'
+
+export function carregarFormatoNegativoPoker(): FormatoNegativoPoker {
+  return getLocalItem<FormatoNegativoPoker>(STORAGE_KEYS.FORMATO_NEGATIVO_POKER, 'menos') === 'parenteses' ? 'parenteses' : 'menos'
+}
+
+export function salvarFormatoNegativoPoker(formato: FormatoNegativoPoker): void {
+  setLocalItem(STORAGE_KEYS.FORMATO_NEGATIVO_POKER, formato)
+}
+
 export function carregarLocaisPoker(): string[] {
   return getLocalItem<string[]>(STORAGE_KEYS.LOCAIS, LOCAIS_PADRAO)
 }
 
 export function salvarLocaisPoker(locais: string[]): void {
   setLocalItem(STORAGE_KEYS.LOCAIS, locais)
+}
+
+const coresPadraoLocaisPoker: Record<string, string> = { h2: '#77158D', montecarlo: '#5B120E' }
+
+export function carregarConfiguracoesLocaisPoker(): LocalPokerConfig[] {
+  const locais = carregarLocaisPoker()
+  const salvas = getLocalItem<LocalPokerConfig[]>(STORAGE_KEYS.LOCAIS_CONFIG, [])
+  const resultado = [...salvas]
+  locais.forEach((nome) => {
+    const existe = resultado.some((item) => item.nome.toLowerCase() === nome.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))
+    if (!existe) resultado.push({ nome, cor: coresPadraoLocaisPoker[nome.toLowerCase()] || '#475569' })
+  })
+  return resultado
+}
+
+export async function sincronizarConfiguracoesLocaisPoker(): Promise<LocalPokerConfig[]> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) return carregarConfiguracoesLocaisPoker()
+  const remotas = data.user.user_metadata?.poker_locais_config
+  if (Array.isArray(remotas)) {
+    const configs = remotas as LocalPokerConfig[]
+    if (configs.length) salvarLocaisPoker(configs.map((item) => item.nome))
+    setLocalItem(STORAGE_KEYS.LOCAIS_CONFIG, configs)
+  }
+  const configs = carregarConfiguracoesLocaisPoker()
+  return Promise.all(configs.map(async (config) => {
+    if (!config.storage_path) return config
+    const { data: signed, error: signedError } = await supabase.storage.from('poker-fotos').createSignedUrl(config.storage_path, 3600)
+    return signedError || !signed ? config : { ...config, fotoUrl: signed.signedUrl }
+  }))
+}
+
+export async function salvarConfiguracoesLocaisPoker(configs: LocalPokerConfig[]): Promise<void> {
+  setLocalItem(STORAGE_KEYS.LOCAIS_CONFIG, configs.map(({ fotoUrl: _fotoUrl, ...config }) => config))
+  salvarLocaisPoker(configs.map((config) => config.nome))
+  const { data } = await supabase.auth.getUser()
+  if (!data.user) return
+  const { error } = await supabase.auth.updateUser({
+    data: { ...data.user.user_metadata, poker_locais_config: configs.map(({ fotoUrl: _fotoUrl, ...config }) => config) }
+  })
+  if (error) throw error
+}
+
+export async function enviarLogoLocalPoker(args: { nome: string; nomeArquivo: string; tipoMime: string; uri: string; arquivoWeb?: Blob }): Promise<FotoPoker> {
+  return adicionarFotoPoker({
+    mesBase: '__config_locais__',
+    dataCartao: '__logo_local__',
+    local: args.nome,
+    nomeArquivo: args.nomeArquivo,
+    tipoMime: args.tipoMime,
+    uri: args.uri,
+    arquivoWeb: args.arquivoWeb
+  })
+}
+
+export async function removerLogoLocalPoker(storagePath: string): Promise<void> {
+  const { data } = await supabase.auth.getUser()
+  const usuarioId = data.user?.id
+  if (!usuarioId || !storagePath.startsWith(`${usuarioId}/`)) throw new Error('Não foi possível validar a imagem do local.')
+  const { error: storageError } = await supabase.storage.from('poker-fotos').remove([storagePath])
+  if (storageError) throw storageError
+  const { error } = await (supabase as any).from('poker_sessao_fotos').delete().eq('storage_path', storagePath).eq('usuario_id', usuarioId)
+  if (error) throw error
 }
 
 export function carregarCartoesPoker(): string[] {
