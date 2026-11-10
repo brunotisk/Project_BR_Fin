@@ -960,6 +960,7 @@ export function PokerScreen() {
             .filter(({ valor }) => valor > 0)
           const diaTravado = Boolean(diasBloqueados[dataSessao])
           const resumoFechado = diaTravado && visualizacaoSessoes === 'resumido'
+          const detalhadoFechado = diaTravado && visualizacaoSessoes === 'detalhado'
           const corNetSessao = netSessao >= 0 ? '#15803D' : '#DC2626'
           const locaisPresentes = new Set(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)))
           const locaisDisponiveis = locaisCadastrados.filter((local) => !locaisPresentes.has(nomeLocalCanonico(local, configuracoesLocais)))
@@ -968,14 +969,14 @@ export function PokerScreen() {
           return (
             <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
               {/* CABEÇALHO DO DIA */}
-              <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta, resumoFechado && styles.sessaoTopBarResumoFechado]}>
-                <View style={resumoFechado ? styles.sessaoDiaResumoFechado : { flex: 1, minWidth: 100, gap: 5 }}>
+              <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta, resumoFechado && styles.sessaoTopBarResumoFechado, detalhadoFechado && styles.sessaoTopBarDetalhadoFechado]}>
+                <View style={resumoFechado ? styles.sessaoDiaResumoFechado : detalhadoFechado ? styles.sessaoDiaDetalhadoFechado : { flex: 1, minWidth: 100, gap: 5 }}>
                   <Text numberOfLines={1} style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>{formatarDataPoker(dataSessao, mesBaseSessao)}</Text>
                   <Text style={styles.sessaoEntradasBadge}>
                     {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
                   </Text>
                 </View>
-                {diaTravado && <View style={resumoFechado ? styles.netSessaoHeaderCenter : undefined}><View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada, resumoFechado && styles.netSessaoHeaderResumo]}>
+                {diaTravado && <View style={resumoFechado ? styles.netSessaoHeaderCenter : undefined}><View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada, resumoFechado && styles.netSessaoHeaderResumo, detalhadoFechado && styles.netSessaoHeaderDetalhadoFechado]}>
                     <Text style={styles.netSessaoHeaderLabel}>Resultado:</Text>
                   <View style={styles.netSessaoHeaderValueRow}>
                     <Ionicons name={netSessao >= 0 ? 'trending-up' : 'trending-down'} size={14} color={corNetSessao} />
@@ -984,7 +985,7 @@ export function PokerScreen() {
                     </Text>
                   </View>
                 </View></View>}
-                {!resumoFechado && <View style={styles.sessaoTopActions}>
+                {!resumoFechado && <View style={[styles.sessaoTopActions, detalhadoFechado && styles.sessaoTopActionsDetalhadoFechado]}>
                   {!diaTravado ? <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
@@ -1806,9 +1807,19 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 8
   },
+  sessaoTopBarDetalhadoFechado: {
+    flexWrap: 'nowrap',
+    gap: 6,
+    paddingHorizontal: 8
+  },
   sessaoDiaResumoFechado: {
     width: 112,
     flexShrink: 0,
+    gap: 5
+  },
+  sessaoDiaDetalhadoFechado: {
+    flex: 1,
+    minWidth: 80,
     gap: 5
   },
   netSessaoHeaderCenter: {
@@ -1820,6 +1831,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9
+  },
+  sessaoTopActionsDetalhadoFechado: {
+    flexShrink: 0,
+    gap: 5
   },
   netSessaoHeader: {
     minWidth: 112,
@@ -1839,6 +1854,10 @@ const styles = StyleSheet.create({
     width: 190,
     minWidth: 112,
     flexShrink: 1
+  },
+  netSessaoHeaderDetalhadoFechado: {
+    minWidth: 96,
+    paddingHorizontal: 6
   },
   netSessaoHeaderAberta: {
     borderColor: '#BBF7D0'

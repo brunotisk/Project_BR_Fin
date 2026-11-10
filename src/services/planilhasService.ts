@@ -29,81 +29,6 @@ export const FECHAMENTOS_INICIAIS_MAP: Record<string, FechamentoMensal> = {
 
 export const FECHAMENTO_INICIAL: FechamentoMensal = FECHAMENTOS_INICIAIS_MAP['Outubro']
 
-export const CARTOES_VIGENTES_INICIAIS: CartaoControleItem[] = [
-  {
-    id: 'cv-1',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'vigente',
-    cartao_nome: 'Nubank',
-    valor: 9880,
-    fechamento: '29/out',
-    pagamento: '05/nov',
-    atualizado_em_texto: '30/out',
-    ordem: 1
-  },
-  {
-    id: 'cv-2',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'vigente',
-    cartao_nome: 'Picpay',
-    valor: 0,
-    fechamento: '',
-    pagamento: '',
-    atualizado_em_texto: '30/out',
-    ordem: 2
-  },
-  {
-    id: 'cv-3',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'vigente',
-    cartao_nome: 'BTG',
-    valor: 22710,
-    fechamento: '02/nov',
-    pagamento: '05/nov',
-    atualizado_em_texto: '30/out',
-    ordem: 3
-  }
-]
-
-export const CARTOES_DETALHADOS_INICIAIS: CartaoControleItem[] = [
-  {
-    id: 'cd-1',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'detalhado_ma',
-    cartao_nome: 'Nubank',
-    valor: 8900,
-    valor_ma: 6275,
-    valor_sem_ma: 2625,
-    fechamento: '',
-    pagamento: '',
-    ordem: 1
-  },
-  {
-    id: 'cd-2',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'detalhado_ma',
-    cartao_nome: 'Picpay',
-    valor: 23180,
-    valor_ma: 21825,
-    valor_sem_ma: 1355,
-    fechamento: '',
-    pagamento: '',
-    ordem: 2
-  },
-  {
-    id: 'cd-3',
-    mes_referencia: 'Outubro',
-    tabela_tipo: 'detalhado_ma',
-    cartao_nome: 'BTG',
-    valor: 4300,
-    valor_ma: 0,
-    valor_sem_ma: 4300,
-    fechamento: '',
-    pagamento: '',
-    ordem: 3
-  }
-]
-
 // Lançamentos fiéis à nova imagem fornecida (31/out, 30/out, somando 37.325,00 e 1.325,05 de taxas)
 export const LANCAMENTOS_POKER_INICIAIS: LancamentoPoker[] = [
   // Sessão 31/out (BuyIN: 9.225, Taxa: 225, CASHout: 14.655, NET: 5.205)
@@ -193,13 +118,40 @@ const STORAGE_KEYS = {
   LOCAIS: '@fin_poker_locais',
   LOCAIS_CONFIG: '@fin_poker_locais_config',
   CARTOES_POKER: '@fin_poker_cartoes',
-  MES_SELECIONADO: '@fin_mes_fechamento_selecionado'
+  MES_SELECIONADO: '@fin_mes_fechamento_selecionado',
+  CARTOES_MES_SELECIONADO: '@fin_mes_cartoes_controle_selecionado'
+}
+
+const CHAVE_MES_SIMULADOR_CAIXA = 'simulador-cartoes'
+const CHAVE_LOCAL_SIMULADOR_CAIXA = '@fin_simulador_cartoes'
+
+export type DadosSimuladorCaixa = {
+  valor_cartoes: number
+  valor_contas: number
+  valor_dinheiro: number
+  valor_pix: number
+  valor_conta_corrente: number
+  valor_salario: number
+  valor_necessario: number
+  cartoes_selecionados: string[]
+}
+
+const SIMULADOR_CAIXA_VAZIO: DadosSimuladorCaixa = {
+  valor_cartoes: 0,
+  valor_contas: 0,
+  valor_dinheiro: 0,
+  valor_pix: 0,
+  valor_conta_corrente: 0,
+  valor_salario: 0,
+  valor_necessario: 0,
+  cartoes_selecionados: []
 }
 
 export function limparCacheDadosRemotos(): void {
   if (typeof localStorage === 'undefined') return
   const prefixosRemotos = [
     STORAGE_KEYS.FECHAMENTO_PREFIX,
+    CHAVE_LOCAL_SIMULADOR_CAIXA,
     STORAGE_KEYS.CARTOES_PREFIX,
     STORAGE_KEYS.LANCAMENTOS,
     STORAGE_KEYS.SESSOES_POKER,
@@ -241,6 +193,14 @@ export function carregarMesFechamentoSelecionado(): string {
 
 export function salvarMesFechamentoSelecionado(mes: string): void {
   setLocalItem(STORAGE_KEYS.MES_SELECIONADO, mes)
+}
+
+export function carregarMesCartoesControleSelecionado(): string {
+  return getLocalItem(STORAGE_KEYS.CARTOES_MES_SELECIONADO, '')
+}
+
+export function salvarMesCartoesControleSelecionado(mes: string): void {
+  setLocalItem(STORAGE_KEYS.CARTOES_MES_SELECIONADO, mes)
 }
 
 // ==========================================
@@ -317,6 +277,68 @@ export async function salvarFechamento(fechamento: FechamentoMensal): Promise<vo
   }
 }
 
+export async function carregarSimuladorCaixa(): Promise<DadosSimuladorCaixa> {
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+
+  if (usuarioId) {
+    const { data, error } = await (supabase as any)
+      .from('fechamentos_mensais')
+      .select('*')
+      .eq('usuario_id', usuarioId)
+      .eq('mes_ano', CHAVE_MES_SIMULADOR_CAIXA)
+      .maybeSingle()
+    if (error) throw error
+    if (data) {
+      let cartoesSelecionados: string[] = []
+      try {
+        const metadados = JSON.parse(data.observacao || '{}')
+        if (Array.isArray(metadados.cartoes_selecionados)) cartoesSelecionados = metadados.cartoes_selecionados
+      } catch { /* Registro antigo sem configuração do seletor. */ }
+      const simulador: DadosSimuladorCaixa = {
+        valor_cartoes: Number(data.valor_cartoes) || 0,
+        valor_contas: Number(data.valor_contas) || 0,
+        valor_dinheiro: Number(data.valor_dinheiro) || 0,
+        valor_pix: Number(data.valor_pix) || 0,
+        valor_conta_corrente: Number(data.valor_conta_corrente) || 0,
+        valor_salario: Number(data.valor_salario) || 0,
+        valor_necessario: Number(data.valor_necessario) || 0,
+        cartoes_selecionados: cartoesSelecionados
+      }
+      setLocalItem(CHAVE_LOCAL_SIMULADOR_CAIXA, simulador)
+      return simulador
+    }
+  }
+
+  return getLocalItem(CHAVE_LOCAL_SIMULADOR_CAIXA, SIMULADOR_CAIXA_VAZIO)
+}
+
+export async function salvarSimuladorCaixa(simulador: DadosSimuladorCaixa): Promise<void> {
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Faça login para salvar o simulador no banco.')
+
+  const { error } = await (supabase as any)
+    .from('fechamentos_mensais')
+    .upsert({
+      usuario_id: usuarioId,
+      mes_ano: CHAVE_MES_SIMULADOR_CAIXA,
+      valor_cartoes: simulador.valor_cartoes,
+      valor_contas: simulador.valor_contas,
+      valor_dinheiro: simulador.valor_dinheiro,
+      valor_pix: simulador.valor_pix,
+      valor_conta_corrente: simulador.valor_conta_corrente,
+      valor_salario: simulador.valor_salario,
+      valor_necessario: simulador.valor_necessario,
+      observacao: JSON.stringify({ cartoes_selecionados: simulador.cartoes_selecionados })
+    }, { onConflict: 'usuario_id, mes_ano' })
+  if (error) throw error
+
+  setLocalItem(CHAVE_LOCAL_SIMULADOR_CAIXA, simulador)
+}
+
 // ==========================================
 // 2. CONTROLE DE CARTÕES (POR MÊS)
 // ==========================================
@@ -369,13 +391,6 @@ export async function carregarCartoesControle(mes: string): Promise<{
     const vigentes = localEncontrado.filter((c) => c.tabela_tipo === 'vigente')
     const detalhados = localEncontrado.filter((c) => c.tabela_tipo === 'detalhado_ma')
     return { vigentes, detalhados }
-  }
-
-  if (mesLegado === 'Outubro') {
-    return {
-      vigentes: CARTOES_VIGENTES_INICIAIS,
-      detalhados: CARTOES_DETALHADOS_INICIAIS
-    }
   }
 
   return { vigentes: [], detalhados: [] }

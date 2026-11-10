@@ -17,12 +17,13 @@ import { colors } from '../theme'
 import { notify } from '../utils/notify'
 import {
   carregarCartoesControle,
-  carregarMesFechamentoSelecionado,
-  CARTOES_DETALHADOS_INICIAIS,
-  CARTOES_VIGENTES_INICIAIS,
+  carregarMesCartoesControleSelecionado,
+  carregarSimuladorCaixa,
+  DadosSimuladorCaixa,
   gerarUuidPoker,
+  salvarSimuladorCaixa,
   salvarCartoesControle,
-  salvarMesFechamentoSelecionado
+  salvarMesCartoesControleSelecionado
 } from '../services/planilhasService'
 import { CartaoControleItem } from '../types'
 
@@ -85,18 +86,48 @@ function obterOpcoesMesesControle() {
 
 const OPCOES_MESES_CONTROLE = obterOpcoesMesesControle()
 
+type OpcaoCartaoSimulador = {
+  chave: string
+  mes: string
+  tituloMes: string
+  item: CartaoControleItem
+}
+
+type CampoValorSimulador = 'valor_contas' | 'valor_dinheiro' | 'valor_pix' | 'valor_conta_corrente' | 'valor_salario'
+type ValoresEntradaSimulador = Record<CampoValorSimulador, string>
+
+const SIMULADOR_INICIAL: DadosSimuladorCaixa = {
+  valor_cartoes: 0,
+  valor_contas: 0,
+  valor_dinheiro: 0,
+  valor_pix: 0,
+  valor_conta_corrente: 0,
+  valor_salario: 0,
+  valor_necessario: 0,
+  cartoes_selecionados: []
+}
+
 function normalizarMesSelecionado(mesSalvo: string) {
+  // Valores legados sem ano não identificam um período específico.
+  if (!/\d{4}/.test(mesSalvo)) return OPCOES_MESES_CONTROLE[1].valor
   return OPCOES_MESES_CONTROLE.find((opcao) => opcao.valor.toLowerCase() === mesSalvo.toLowerCase() || opcao.mes.toLowerCase() === mesSalvo.trim().toLowerCase())?.valor || OPCOES_MESES_CONTROLE[1].valor
 }
 
 export function CartoesControleScreen() {
-  const [mesAtual, setMesAtual] = useState(() => normalizarMesSelecionado(carregarMesFechamentoSelecionado()))
-  const [vigentes, setVigentes] = useState<CartaoControleItem[]>(CARTOES_VIGENTES_INICIAIS)
-  const [detalhados, setDetalhados] = useState<CartaoControleItem[]>(CARTOES_DETALHADOS_INICIAIS)
-  const [atualizadoEm, setAtualizadoEm] = useState('30/out')
+  const [mesAtual, setMesAtual] = useState(() => normalizarMesSelecionado(carregarMesCartoesControleSelecionado()))
+  const [vigentes, setVigentes] = useState<CartaoControleItem[]>([])
+  const [detalhados, setDetalhados] = useState<CartaoControleItem[]>([])
+  const [atualizadoEm, setAtualizadoEm] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [copiandoCartoes, setCopiandoCartoes] = useState(false)
+  const [opcoesCartoesSimulador, setOpcoesCartoesSimulador] = useState<OpcaoCartaoSimulador[]>([])
+  const [simulador, setSimulador] = useState<DadosSimuladorCaixa>(SIMULADOR_INICIAL)
+  const [valoresEntradaSimulador, setValoresEntradaSimulador] = useState<ValoresEntradaSimulador>({
+    valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: ''
+  })
+  const [seletorCartoesAberto, setSeletorCartoesAberto] = useState(false)
+  const [salvandoSimulador, setSalvandoSimulador] = useState(false)
 
   // Modal para adicionar/editar cartão
   const [modalVisible, setModalVisible] = useState(false)
@@ -127,9 +158,7 @@ export function CartoesControleScreen() {
       const { vigentes: v, detalhados: d } = await carregarCartoesControle(mes)
       setVigentes(v)
       setDetalhados(d)
-      if (v[0]?.atualizado_em_texto) {
-        setAtualizadoEm(v[0].atualizado_em_texto)
-      }
+      setAtualizadoEm(v[0]?.atualizado_em_texto || d[0]?.atualizado_em_texto || '')
     } catch (err) {
       console.warn('Erro ao carregar cartões:', err)
     } finally {
@@ -138,19 +167,54 @@ export function CartoesControleScreen() {
     }
   }, [])
 
+  const carregarCartoesDoSimulador = useCallback(async () => {
+    try {
+      const opcoes = await Promise.all(OPCOES_MESES_CONTROLE.map(async (opcaoMes) => {
+        const dados = await carregarCartoesControle(opcaoMes.valor)
+        return [...dados.vigentes, ...dados.detalhados].map((item) => ({
+          chave: `${opcaoMes.valor}|${item.id}`,
+          mes: opcaoMes.valor,
+          tituloMes: `${opcaoMes.titulo} · ${opcaoMes.mes}`,
+          item
+        }))
+      }))
+      setOpcoesCartoesSimulador(opcoes.flat())
+    } catch (erro) {
+      console.warn('Erro ao carregar cartões do simulador:', erro)
+    }
+  }, [])
+
+  const carregarDadosSimulador = useCallback(async () => {
+    try {
+      const dados = await carregarSimuladorCaixa()
+      setSimulador(dados)
+      setValoresEntradaSimulador({
+        valor_contas: dados.valor_contas ? String(dados.valor_contas) : '',
+        valor_dinheiro: dados.valor_dinheiro ? String(dados.valor_dinheiro) : '',
+        valor_pix: dados.valor_pix ? String(dados.valor_pix) : '',
+        valor_conta_corrente: dados.valor_conta_corrente ? String(dados.valor_conta_corrente) : '',
+        valor_salario: dados.valor_salario ? String(dados.valor_salario) : ''
+      })
+    } catch (erro) {
+      console.warn('Erro ao carregar simulador de caixa:', erro)
+    }
+  }, [])
+
   useFocusEffect(
     useCallback(() => {
-      const mesSalvo = carregarMesFechamentoSelecionado()
+      const mesSalvo = carregarMesCartoesControleSelecionado()
       const mesValido = normalizarMesSelecionado(mesSalvo)
       setMesAtual(mesValido)
-      if (mesValido !== mesSalvo) salvarMesFechamentoSelecionado(mesValido)
+      if (mesValido !== mesSalvo) salvarMesCartoesControleSelecionado(mesValido)
       carregar(mesValido)
-    }, [carregar])
+      void carregarCartoesDoSimulador()
+      void carregarDadosSimulador()
+    }, [carregar, carregarCartoesDoSimulador, carregarDadosSimulador])
   )
 
   const mudarMes = (novoMes: string) => {
     setMesAtual(novoMes)
-    salvarMesFechamentoSelecionado(novoMes)
+    salvarMesCartoesControleSelecionado(novoMes)
     carregar(novoMes)
   }
 
@@ -338,6 +402,52 @@ export function CartoesControleScreen() {
   const mesesDisponiveis = OPCOES_MESES_CONTROLE
   const itensDoMes = [...vigentes, ...detalhados].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
   const totalAPagar = itensDoMes.reduce((total, item) => total + (Number(item.valor) || 0), 0)
+  const valorCartoesSimulador = opcoesCartoesSimulador
+    .filter((opcao) => simulador.cartoes_selecionados.includes(opcao.chave))
+    .reduce((total, opcao) => total + (Number(opcao.item.valor) || 0), 0)
+  const valorNumericoEntrada = (valor: string) => Number(valor.replace(',', '.')) || 0
+  const totalDisponivelSimulador = ['valor_dinheiro', 'valor_pix', 'valor_conta_corrente', 'valor_salario']
+    .reduce((total, chave) => total + valorNumericoEntrada(valoresEntradaSimulador[chave as CampoValorSimulador]), 0)
+  const valorNecessarioSimulador = Math.max(0, valorCartoesSimulador + valorNumericoEntrada(valoresEntradaSimulador.valor_contas) - totalDisponivelSimulador)
+  const camposSimulador = [
+    { chave: 'valor_contas' as const, titulo: 'Valor Contas', icone: 'receipt-outline' as const, cor: '#EF4444', fundo: '#FEE2E2' },
+    { chave: 'valor_dinheiro' as const, titulo: 'Valor Dinheiro', icone: 'cash-outline' as const, cor: '#16A34A', fundo: '#DCFCE7' },
+    { chave: 'valor_pix' as const, titulo: 'Valor PIX (Cair)', icone: 'flash-outline' as const, cor: '#D97706', fundo: '#FEF3C7' },
+    { chave: 'valor_conta_corrente' as const, titulo: 'Valor Conta Corrente', icone: 'business-outline' as const, cor: '#4F46E5', fundo: '#E0E7FF' },
+    { chave: 'valor_salario' as const, titulo: 'Valor Salário', icone: 'wallet-outline' as const, cor: '#9333EA', fundo: '#F3E8FF' }
+  ]
+
+  const alternarCartaoSimulador = (chave: string) => {
+    setSimulador((atual) => ({
+      ...atual,
+      cartoes_selecionados: atual.cartoes_selecionados.includes(chave)
+        ? atual.cartoes_selecionados.filter((item) => item !== chave)
+        : [...atual.cartoes_selecionados, chave]
+    }))
+  }
+
+  const salvarDadosSimulador = async () => {
+    const atualizado: DadosSimuladorCaixa = {
+      ...simulador,
+      valor_cartoes: valorCartoesSimulador,
+      valor_contas: valorNumericoEntrada(valoresEntradaSimulador.valor_contas),
+      valor_dinheiro: valorNumericoEntrada(valoresEntradaSimulador.valor_dinheiro),
+      valor_pix: valorNumericoEntrada(valoresEntradaSimulador.valor_pix),
+      valor_conta_corrente: valorNumericoEntrada(valoresEntradaSimulador.valor_conta_corrente),
+      valor_salario: valorNumericoEntrada(valoresEntradaSimulador.valor_salario),
+      valor_necessario: valorNecessarioSimulador
+    }
+    setSalvandoSimulador(true)
+    try {
+      await salvarSimuladorCaixa(atualizado)
+      setSimulador(atualizado)
+      notify('Simulador salvo', 'Os dados foram gravados no simulador único.')
+    } catch (erro: any) {
+      notify('Erro ao salvar simulador', erro?.message || 'Não foi possível gravar os dados no banco.')
+    } finally {
+      setSalvandoSimulador(false)
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -400,11 +510,11 @@ export function CartoesControleScreen() {
         </View>
 
         <View style={styles.tableCard}>
-          <View style={styles.tableHeaderSky}>
+          <View style={[styles.tableHeaderSky, mesAtual !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
             <Text style={[styles.colHeader, { flex: 1.25 }]}>Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.05 }]}>Valor{'\n'}Fechamento</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Fechamento</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Pagamento</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.05 }]}>Valor Cartão</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Fech.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Pgto.</Text>
             <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Status</Text>
           </View>
 
@@ -433,6 +543,98 @@ export function CartoesControleScreen() {
             <Text style={styles.totalPagarLabel}>Total a pagar</Text>
             <Text style={styles.totalPagarValor}>{formatarMoedaSemCentavos(totalAPagar)}</Text>
           </View>
+        </View>
+
+        <View style={styles.simulatorCard}>
+          <View style={styles.simulatorHeader}>
+            <Text style={styles.simulatorHeaderTitle}>Contas</Text>
+            <Text style={styles.simulatorHeaderTitle}>Valor</Text>
+          </View>
+
+          <View style={styles.simulatorRow}>
+            <View style={styles.simulatorLabelGroup}>
+              <View style={[styles.simulatorIconCircle, { backgroundColor: '#E0F2FE' }]}><Ionicons name="card" size={16} color="#0284C7" /></View>
+              <Text style={styles.simulatorRowLabel}>Valor Cartões</Text>
+            </View>
+            <Text style={styles.simulatorComputedValue}>{valorCartoesSimulador > 0 ? formatarMoedaSemCentavos(valorCartoesSimulador) : '-'}</Text>
+          </View>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Selecionar cartões dos três meses"
+            accessibilityState={{ expanded: seletorCartoesAberto }}
+            style={styles.simulatorSelectRow}
+            onPress={() => setSeletorCartoesAberto((aberto) => !aberto)}
+          >
+            <Text style={styles.simulatorSelectHint}>
+              {simulador.cartoes_selecionados.length > 0 ? `${simulador.cartoes_selecionados.length} cartão(ões) selecionado(s)` : 'Selecionar cartões do mês anterior, atual ou seguinte'}
+            </Text>
+            <Ionicons name={seletorCartoesAberto ? 'chevron-up' : 'chevron-down'} size={17} color={colors.primary} />
+          </TouchableOpacity>
+
+          {seletorCartoesAberto && <View style={styles.simulatorOptionsPanel}>
+            {OPCOES_MESES_CONTROLE.map((opcaoMes) => {
+              const cartoesDoMes = opcoesCartoesSimulador.filter((opcao) => opcao.mes === opcaoMes.valor)
+              return <View key={opcaoMes.valor} style={styles.simulatorMonthGroup}>
+                <Text style={styles.simulatorMonthTitle}>{opcaoMes.titulo} · {opcaoMes.mes}</Text>
+                {cartoesDoMes.length === 0 ? <Text style={styles.simulatorNoCards}>Nenhum cartão neste mês.</Text> : <View style={styles.simulatorChips}>
+                  {cartoesDoMes.map((opcao) => {
+                    const selecionado = simulador.cartoes_selecionados.includes(opcao.chave)
+                    const tipo = opcao.item.tabela_tipo === 'vigente' ? 'Vigente' : 'Detalhado MA'
+                    return <TouchableOpacity
+                      key={opcao.chave}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selecionado }}
+                      onPress={() => alternarCartaoSimulador(opcao.chave)}
+                      style={[styles.simulatorCardOption, selecionado && styles.simulatorCardOptionSelected]}
+                    >
+                      <Ionicons name={selecionado ? 'checkbox' : 'square-outline'} size={16} color={selecionado ? colors.primary : colors.muted} />
+                      <View style={styles.simulatorCardOptionText}>
+                        <Text numberOfLines={1} style={[styles.simulatorCardOptionName, selecionado && styles.simulatorCardOptionNameSelected]}>{opcao.item.cartao_nome}</Text>
+                        <Text style={styles.simulatorCardOptionMeta}>{tipo} · {formatarMoedaSemCentavos(Number(opcao.item.valor) || 0)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  })}
+                </View>}
+              </View>
+            })}
+          </View>}
+
+          {camposSimulador.map((campo) => (
+            <View key={campo.chave} style={styles.simulatorRow}>
+              <View style={styles.simulatorLabelGroup}>
+                <View style={[styles.simulatorIconCircle, { backgroundColor: campo.fundo }]}><Ionicons name={campo.icone} size={16} color={campo.cor} /></View>
+                <Text style={styles.simulatorRowLabel}>{campo.titulo}</Text>
+              </View>
+              <TextInput
+                accessibilityLabel={campo.titulo}
+                style={styles.simulatorValueInput}
+                keyboardType="decimal-pad"
+                placeholder="0,00"
+                placeholderTextColor={colors.muted}
+                value={valoresEntradaSimulador[campo.chave]}
+                onChangeText={(valor) => setValoresEntradaSimulador((atual) => ({ ...atual, [campo.chave]: valor }))}
+              />
+            </View>
+          ))}
+
+          <View style={styles.simulatorNecessaryRow}>
+            <View style={styles.simulatorLabelGroup}>
+              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Text style={styles.simulatorNecessaryLabel}>Valor Necessário</Text>
+            </View>
+            <Text style={styles.simulatorNecessaryValue}>{formatarMoedaSemCentavos(valorNecessarioSimulador)}</Text>
+          </View>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            disabled={salvandoSimulador}
+            style={[styles.simulatorSaveButton, salvandoSimulador && { opacity: 0.6 }]}
+            onPress={() => void salvarDadosSimulador()}
+          >
+            <Ionicons name="save-outline" size={17} color="#FFFFFF" />
+            <Text style={styles.simulatorSaveButtonText}>{salvandoSimulador ? 'Salvando…' : 'Salvar simulador'}</Text>
+          </TouchableOpacity>
         </View>
 
       </ScrollView>
@@ -725,6 +927,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minHeight: 48
   },
+  tableHeaderOtherMonth: {
+    backgroundColor: '#CBD5E1'
+  },
   colHeader: {
     color: '#0F172A',
     fontWeight: '800',
@@ -792,6 +997,201 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: colors.primary
+  },
+  simulatorCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 12,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 2
+  },
+  simulatorHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0284C7',
+    paddingHorizontal: 16
+  },
+  simulatorHeaderTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  simulatorRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  simulatorLabelGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    minWidth: 0
+  },
+  simulatorIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  simulatorRowLabel: {
+    flexShrink: 1,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  simulatorComputedValue: {
+    maxWidth: '48%',
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    textAlign: 'right'
+  },
+  simulatorSelectRow: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: colors.surfaceHover,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  simulatorSelectHint: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  simulatorOptionsPanel: {
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  simulatorMonthGroup: {
+    gap: 7
+  },
+  simulatorMonthTitle: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  simulatorNoCards: {
+    color: colors.muted,
+    fontSize: 11
+  },
+  simulatorChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7
+  },
+  simulatorCardOption: {
+    maxWidth: '100%',
+    minWidth: '47%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  simulatorCardOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight
+  },
+  simulatorCardOptionText: {
+    flex: 1,
+    minWidth: 0
+  },
+  simulatorCardOptionName: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  simulatorCardOptionNameSelected: {
+    color: colors.primary
+  },
+  simulatorCardOptionMeta: {
+    color: colors.muted,
+    fontSize: 9,
+    marginTop: 1
+  },
+  simulatorValueInput: {
+    width: '45%',
+    minHeight: 36,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+    backgroundColor: colors.surface
+  },
+  simulatorNecessaryRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFF0D5',
+    borderTopWidth: 1,
+    borderTopColor: '#FDBA74'
+  },
+  simulatorNecessaryLabel: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  simulatorNecessaryValue: {
+    maxWidth: '48%',
+    color: '#DC2626',
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'right'
+  },
+  simulatorSaveButton: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    margin: 12,
+    borderRadius: 10,
+    backgroundColor: colors.primary
+  },
+  simulatorSaveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800'
   },
   cellTextBold: {
     fontSize: 13,
