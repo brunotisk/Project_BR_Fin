@@ -327,6 +327,8 @@ export async function carregarCartoesControle(mes: string): Promise<{
 }> {
   const mesFormatado = mes.trim()
   const mesLegado = mesFormatado.replace(/\s+\d{4}$/, '')
+  const chaveLocal = `${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`
+  const localMes = getLocalItem<CartaoControleItem[] | null>(chaveLocal, null)
 
   try {
     let { data, error } = await (supabase as any)
@@ -334,6 +336,12 @@ export async function carregarCartoesControle(mes: string): Promise<{
       .select('*')
       .ilike('mes_referencia', `%${mesFormatado}%`)
       .order('ordem', { ascending: true })
+
+    // Uma lista vazia salva localmente é um tombstone: o usuário apagou todos
+    // os itens, então não devemos repor registros legados daquele mês.
+    if (!error && (!data || data.length === 0) && localMes?.length === 0) {
+      return { vigentes: [], detalhados: [] }
+    }
 
     if (!error && (!data || data.length === 0) && mesLegado !== mesFormatado) {
       const legado = await (supabase as any)
@@ -347,21 +355,17 @@ export async function carregarCartoesControle(mes: string): Promise<{
     if (!error && data && data.length > 0) {
       const vigentes = data.filter((c: CartaoControleItem) => c.tabela_tipo === 'vigente')
       const detalhados = data.filter((c: CartaoControleItem) => c.tabela_tipo === 'detalhado_ma')
-      setLocalItem(`${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`, data)
+      setLocalItem(chaveLocal, data)
       return { vigentes, detalhados }
     }
   } catch (err) {
     console.warn('Fallback local para Cartões:', err)
   }
 
-  const local = getLocalItem<CartaoControleItem[] | null>(
-    `${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`,
-    null
-  )
-  const localEncontrado = local?.length ? local : mesLegado !== mesFormatado
+  const localEncontrado = localMes !== null ? localMes : mesLegado !== mesFormatado
     ? getLocalItem<CartaoControleItem[] | null>(`${STORAGE_KEYS.CARTOES_PREFIX}${mesLegado}`, null)
     : null
-  if (localEncontrado && localEncontrado.length > 0) {
+  if (localEncontrado !== null) {
     const vigentes = localEncontrado.filter((c) => c.tabela_tipo === 'vigente')
     const detalhados = localEncontrado.filter((c) => c.tabela_tipo === 'detalhado_ma')
     return { vigentes, detalhados }
@@ -382,24 +386,58 @@ export async function salvarCartoesControle(
   mes: string
 ): Promise<void> {
   const mesFormatado = mes.trim()
-  setLocalItem(`${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`, itens)
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Faça login para sincronizar os cartões.')
 
-  try {
-    const { data: userData } = await supabase.auth.getUser()
-    const usuarioId = userData?.user?.id
-
-    if (usuarioId) {
-      const records = itens.map((item, index) => ({
-        ...item,
-        mes_referencia: mesFormatado,
-        usuario_id: usuarioId,
-        ordem: index
-      }))
-      await (supabase as any).from('cartoes_controle_ma').upsert(records)
+  const records = itens.map((item, index) => {
+    const { criado_em: _criadoEm, ...dados } = item
+    return {
+      ...dados,
+      id: UUID_POKER.test(item.id) ? item.id : gerarUuidPoker(),
+      mes_referencia: mesFormatado,
+      usuario_id: usuarioId,
+      ordem: index,
+      // A tabela define esses valores como NOT NULL; registros vigentes e dados
+      // legados podem não ter os campos de detalhamento preenchidos.
+      valor: Number(item.valor) || 0,
+      valor_ma: Number(item.valor_ma) || 0,
+      valor_sem_ma: Number(item.valor_sem_ma) || 0
     }
-  } catch (err) {
-    console.warn('Erro ao salvar cartões no Supabase (mantido local):', err)
+  })
+
+  if (records.length) {
+    const { error } = await (supabase as any)
+      .from('cartoes_controle_ma')
+      .upsert(records, { onConflict: 'id' })
+    if (error) throw error
   }
+
+  const { error: remocaoError } = await (supabase as any)
+    .from('cartoes_controle_ma')
+    .delete()
+    .eq('usuario_id', usuarioId)
+    .eq('mes_referencia', mesFormatado)
+    .not('id', 'in', `(${records.map((item) => item.id).join(',') || '00000000-0000-4000-8000-000000000000'})`)
+  if (remocaoError) throw remocaoError
+
+  // Dados anteriores à inclusão do ano eram salvos como "Outubro". Ao
+  // excluir o último item de um mês, apague também essa chave legada para que
+  // ela não volte a aparecer como fallback ao reabrir a tela.
+  if (records.length === 0) {
+    const mesLegado = mesFormatado.replace(/\s+\d{4}$/, '')
+    if (mesLegado !== mesFormatado) {
+      const { error } = await (supabase as any)
+        .from('cartoes_controle_ma')
+        .delete()
+        .eq('usuario_id', usuarioId)
+        .eq('mes_referencia', mesLegado)
+      if (error) throw error
+    }
+  }
+
+  setLocalItem(`${STORAGE_KEYS.CARTOES_PREFIX}${mesFormatado}`, records as CartaoControleItem[])
 }
 
 // ==========================================

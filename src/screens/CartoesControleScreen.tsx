@@ -270,7 +270,7 @@ export function CartoesControleScreen() {
     }
 
     const novoItem: CartaoControleItem = {
-      id: itemEditando ? itemEditando.id : `cartao-${Date.now()}`,
+      id: itemEditando ? itemEditando.id : gerarUuidPoker(),
       mes_referencia: mesAtual,
       tabela_tipo: tabelaAlvo,
       cartao_nome: formNome.trim(),
@@ -303,9 +303,14 @@ export function CartoesControleScreen() {
       setDetalhados(novosDetalhados)
     }
 
-    setModalVisible(false)
-    await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesAtual)
-    notify('Sucesso', 'Cartão salvo com sucesso!')
+    try {
+      await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesAtual)
+      setModalVisible(false)
+      notify('Sucesso', 'Cartão salvo e sincronizado com sucesso!')
+    } catch (erro: any) {
+      notify('Erro ao sincronizar cartão', erro?.message || 'Os dados não foram enviados ao banco.')
+      await carregar(mesAtual)
+    }
   }
 
   const excluirItem = async (id: string, tipo: 'vigente' | 'detalhado_ma') => {
@@ -320,9 +325,14 @@ export function CartoesControleScreen() {
       setDetalhados(novosDetalhados)
     }
 
-    setModalVisible(false)
-    await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesAtual)
-    notify('Removido', 'Item excluído com sucesso.')
+    try {
+      await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesAtual)
+      setModalVisible(false)
+      notify('Removido', 'Item excluído com sucesso.')
+    } catch (erro: any) {
+      notify('Erro ao sincronizar exclusão', erro?.message || 'A alteração não foi enviada ao banco.')
+      await carregar(mesAtual)
+    }
   }
 
   const mesesDisponiveis = OPCOES_MESES_CONTROLE
@@ -337,9 +347,31 @@ export function CartoesControleScreen() {
       >
         {/* Cabeçalho */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerInfo}>
             <Text style={styles.title}>Cartões</Text>
             <Text style={styles.subtitle}>Controle de faturas · {mesAtual}</Text>
+          </View>
+          <View style={styles.headerActions}>
+            {mesAtual === OPCOES_MESES_CONTROLE[2].valor && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Copiar cartões de ${OPCOES_MESES_CONTROLE[1].mes}`}
+                accessibilityHint="Copia para este mês os cartões do mês anterior."
+                disabled={copiandoCartoes}
+                style={[styles.headerActionButton, copiandoCartoes && styles.headerActionDisabled]}
+                onPress={() => void copiarCartoesDoMesAtual()}
+              >
+                <Ionicons name="copy-outline" size={19} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Adicionar cartão"
+              style={styles.headerActionButton}
+              onPress={() => abrirModalNovo('vigente')}
+            >
+              <Ionicons name="add" size={23} color={colors.primary} />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -403,18 +435,6 @@ export function CartoesControleScreen() {
           </View>
         </View>
 
-        {mesAtual === OPCOES_MESES_CONTROLE[2].valor && <TouchableOpacity accessibilityRole="button" disabled={copiandoCartoes} style={styles.copyCurrentButton} onPress={() => void copiarCartoesDoMesAtual()}>
-          <Ionicons name="copy-outline" size={17} color={colors.primary} />
-          <Text style={styles.copyCurrentButtonText}>{copiandoCartoes ? 'Copiando cartões…' : `Copiar cartões de ${OPCOES_MESES_CONTROLE[1].mes}`}</Text>
-        </TouchableOpacity>}
-
-        <TouchableOpacity
-          style={styles.btnAdicionarLinha}
-          onPress={() => abrirModalNovo('vigente')}
-        >
-          <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-          <Text style={styles.btnAdicionarLinhaTexto}>Adicionar cartão</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* Modal Adicionar / Editar */}
@@ -543,7 +563,32 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10
+  },
+  headerInfo: {
+    flex: 1
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 10
+  },
+  headerActionButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  headerActionDisabled: {
+    opacity: 0.5
   },
   title: {
     fontSize: 22,
@@ -814,36 +859,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#173F35'
-  },
-  btnAdicionarLinha: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    gap: 6
-  },
-  copyCurrentButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 2,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: colors.borderFocus,
-    borderRadius: 10,
-    backgroundColor: colors.primaryLight
-  },
-  copyCurrentButtonText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '800'
-  },
-  btnAdicionarLinhaTexto: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.primary
   },
   modalOverlay: {
     flex: 1,

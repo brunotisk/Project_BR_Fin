@@ -365,6 +365,18 @@ export function PokerScreen() {
     return { data: sessao.data, mesBase: sessao.mesBase, buyIn, cashout, net: cashout - buyIn - taxas }
   }), [sessoesAgrupadas, cashouts])
 
+  const sessoesPorMes = useMemo(() => {
+    const contagem = new Map<string, number>()
+    sessoesAgrupadas.forEach((sessao) => {
+      const mesBase = normalizarMesBase(sessao.mesBase)
+      if (mesBase) contagem.set(mesBase, (contagem.get(mesBase) || 0) + 1)
+    })
+    return Array.from(contagem.entries())
+      .map(([mesBase, quantidade]) => ({ mesBase, label: rotuloMesBase(mesBase), quantidade }))
+      .sort((a, b) => b.mesBase.localeCompare(a.mesBase))
+  }, [sessoesAgrupadas])
+  const maiorContagemSessoesMes = Math.max(1, ...sessoesPorMes.map((item) => item.quantidade))
+
   const dadosResultadoOrdenados = useMemo(() => [...dadosGraficosSessoes].sort((a, b) => {
     if (ordenacaoResultadoGrafico === 'data_asc') return dataSessaoOrdenacao(a.data, a.mesBase) - dataSessaoOrdenacao(b.data, b.mesBase)
     if (ordenacaoResultadoGrafico === 'resultado_asc') return a.net - b.net
@@ -882,6 +894,15 @@ export function PokerScreen() {
         {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
           {dadosGraficosSessoes.length === 0 ? <View style={styles.graphCard}><Text style={styles.graphTitle}>Sem dados para exibir</Text><Text style={styles.graphEmpty}>Adicione lançamentos ou escolha outro mês base para ver os gráficos.</Text></View> : <>
             <View style={styles.graphCard}>
+              <Text style={styles.graphTitle}>Sessões por mês</Text>
+              {sessoesPorMes.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
+                <Text numberOfLines={1} style={styles.graphMonthlySessionLabel}>{mes.label}</Text>
+                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(3, (mes.quantidade / maiorContagemSessoesMes) * 100)}%`, backgroundColor: '#0284C7' }]} /></View>
+                <Text style={styles.graphMonthlySessionCount}>{mes.quantidade}</Text>
+              </View>)}
+            </View>
+
+            <View style={styles.graphCard}>
               <Text style={styles.graphTitle}>Buy-ins e Cashout por sessão</Text>
               <View style={styles.graphLegend}>
                 <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#0284C7' }]} /><Text style={styles.graphLegendText}>Buy-ins</Text></View>
@@ -938,6 +959,7 @@ export function PokerScreen() {
             .map((local) => ({ local, valor: chavesCashoutLocais.filter((nome) => nomeLocalCanonico(nome, configuracoesLocais) === local).reduce((total, nome) => total + (Number(cashoutsDoDia[nome]) || 0), 0) }))
             .filter(({ valor }) => valor > 0)
           const diaTravado = Boolean(diasBloqueados[dataSessao])
+          const resumoFechado = diaTravado && visualizacaoSessoes === 'resumido'
           const corNetSessao = netSessao >= 0 ? '#15803D' : '#DC2626'
           const locaisPresentes = new Set(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)))
           const locaisDisponiveis = locaisCadastrados.filter((local) => !locaisPresentes.has(nomeLocalCanonico(local, configuracoesLocais)))
@@ -946,14 +968,14 @@ export function PokerScreen() {
           return (
             <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
               {/* CABEÇALHO DO DIA */}
-              <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta]}>
-                <View style={{ flex: 1, minWidth: 100, gap: 5 }}>
+              <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta, resumoFechado && styles.sessaoTopBarResumoFechado]}>
+                <View style={resumoFechado ? styles.sessaoDiaResumoFechado : { flex: 1, minWidth: 100, gap: 5 }}>
                   <Text numberOfLines={1} style={[styles.sessaoDiaTexto, diaTravado && styles.sessaoDiaTextoFechada]}>{formatarDataPoker(dataSessao, mesBaseSessao)}</Text>
                   <Text style={styles.sessaoEntradasBadge}>
                     {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
                   </Text>
                 </View>
-                {diaTravado && <View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada]}>
+                {diaTravado && <View style={resumoFechado ? styles.netSessaoHeaderCenter : undefined}><View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada, resumoFechado && styles.netSessaoHeaderResumo]}>
                     <Text style={styles.netSessaoHeaderLabel}>Resultado:</Text>
                   <View style={styles.netSessaoHeaderValueRow}>
                     <Ionicons name={netSessao >= 0 ? 'trending-up' : 'trending-down'} size={14} color={corNetSessao} />
@@ -961,25 +983,25 @@ export function PokerScreen() {
                       {formatarResultadoPoker(netSessao, formatoNegativoPoker)}
                     </Text>
                   </View>
-                </View>}
-                <View style={styles.sessaoTopActions}>
-                  {!(diaTravado && visualizacaoSessoes === 'resumido') && <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={diaTravado ? `Reabrir dia ${formatarDataPoker(dataSessao, mesBaseSessao)}` : `Travar dia ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
-                    style={[styles.sessaoLockButton, diaTravado && styles.sessaoLockButtonActive]}
-                    onPress={() => void alternarBloqueioDia(dataSessao, !diaTravado)}
-                  >
-                    <Text style={[styles.sessaoLockText, diaTravado && styles.sessaoLockTextActive]}>{diaTravado ? 'Reabrir' : 'Travar dia'}</Text>
-                  </TouchableOpacity>}
-                  {!diaTravado && <TouchableOpacity
+                </View></View>}
+                {!resumoFechado && <View style={styles.sessaoTopActions}>
+                  {!diaTravado ? <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
                     style={styles.sessionDeleteButton}
                     onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
                   >
-                    <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                  </TouchableOpacity> : <View style={styles.sessionActionPlaceholder} />}
+                  {!(diaTravado && visualizacaoSessoes === 'resumido') && <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={diaTravado ? `Reabrir dia ${formatarDataPoker(dataSessao, mesBaseSessao)}` : `Travar dia ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
+                    style={styles.sessaoLockButton}
+                    onPress={() => void alternarBloqueioDia(dataSessao, !diaTravado)}
+                  >
+                    <Ionicons name={diaTravado ? 'lock-open' : 'lock-closed'} size={20} color="#000000" />
                   </TouchableOpacity>}
-                </View>
+                </View>}
               </View>
 
               {/* ======================================================== */}
@@ -1756,8 +1778,8 @@ const styles = StyleSheet.create({
     borderColor: '#86EFAC'
   },
   sessaoCardFechada: {
-    borderColor: '#93C5FD',
-    backgroundColor: '#EFF6FF'
+    borderColor: '#9CA3AF',
+    backgroundColor: '#FFFFFF'
   },
   sessaoTopBar: {
     flexDirection: 'row',
@@ -1776,8 +1798,23 @@ const styles = StyleSheet.create({
     borderBottomColor: '#BBF7D0'
   },
   sessaoTopBarFechada: {
-    backgroundColor: '#DBEAFE',
-    borderBottomColor: '#BFDBFE'
+    backgroundColor: '#E5E7EB',
+    borderBottomColor: '#D1D5DB'
+  },
+  sessaoTopBarResumoFechado: {
+    flexWrap: 'nowrap',
+    gap: 6,
+    paddingHorizontal: 8
+  },
+  sessaoDiaResumoFechado: {
+    width: 112,
+    flexShrink: 0,
+    gap: 5
+  },
+  netSessaoHeaderCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center'
   },
   sessaoTopActions: {
     flexDirection: 'row',
@@ -1796,7 +1833,12 @@ const styles = StyleSheet.create({
     gap: 2
   },
   netSessaoHeaderFechada: {
-    borderColor: '#BFDBFE'
+    borderColor: '#4B5563'
+  },
+  netSessaoHeaderResumo: {
+    width: 190,
+    minWidth: 112,
+    flexShrink: 1
   },
   netSessaoHeaderAberta: {
     borderColor: '#BBF7D0'
@@ -1818,23 +1860,18 @@ const styles = StyleSheet.create({
     gap: 5
   },
   sessaoLockButton: {
-    flexDirection: 'row',
+    width: 38,
+    height: 38,
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 8,
     backgroundColor: colors.surface
   },
-  sessaoLockButtonActive: {
-    borderColor: '#60A5FA',
-    backgroundColor: '#EFF6FF'
-  },
   sessionDeleteButton: {
-    width: 30,
-    height: 30,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -1842,17 +1879,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FEF2F2'
   },
+  sessionActionPlaceholder: {
+    width: 38,
+    height: 38
+  },
   sessionDeleteButtonDisabled: {
     borderColor: '#FCD34D',
     backgroundColor: '#FEF3C7'
-  },
-  sessaoLockText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: '700'
-  },
-  sessaoLockTextActive: {
-    color: '#1D4ED8'
   },
   sessaoBadgeDia: {
     flexDirection: 'row',
@@ -1865,7 +1898,7 @@ const styles = StyleSheet.create({
     color: colors.text
   },
   sessaoDiaTextoFechada: {
-    color: '#1E40AF'
+    color: '#374151'
   },
   sessaoEntradasBadge: {
     alignSelf: 'flex-start',
@@ -1946,8 +1979,9 @@ const styles = StyleSheet.create({
     borderColor: '#FACC15'
   },
   cashoutMiniBoxFechada: {
-    backgroundColor: '#DBEAFE',
-    borderColor: '#93C5FD'
+    backgroundColor: '#F8FAFC',
+    borderColor: colors.border,
+    minHeight: 78
   },
   cashoutMiniTop: {
     flexDirection: 'row',
@@ -1961,7 +1995,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase'
   },
   cashoutMiniLabelFechado: {
-    color: '#1E40AF'
+    color: colors.muted
   },
   cashoutMiniValor: {
     fontSize: 13,
@@ -1970,7 +2004,7 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   cashoutMiniValorFechado: {
-    color: '#1D4ED8'
+    color: colors.text
   },
   cashoutDetalhesTexto: {
     fontSize: 9,
@@ -1983,7 +2017,7 @@ const styles = StyleSheet.create({
     gap: 1
   },
   cashoutDetalhesTextoFechado: {
-    color: '#1E40AF'
+    color: colors.muted
   },
   tableScroll: {
     marginHorizontal: 1
@@ -2313,6 +2347,27 @@ const styles = StyleSheet.create({
     paddingTop: 9,
     borderTopWidth: 1,
     borderTopColor: colors.border
+  },
+  graphMonthlySessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.border
+  },
+  graphMonthlySessionLabel: {
+    width: 112,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  graphMonthlySessionCount: {
+    width: 28,
+    textAlign: 'right',
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800'
   },
   graphResultTrack: {
     flex: 1,
