@@ -60,6 +60,10 @@ function formatarMoedaSemCentavos(valor: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(valor) || 0)
 }
 
+function formatarMoedaSimulador(valor: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(valor) || 0)
+}
+
 function dataLegadaParaISO(valor: string, mesPadrao: string) {
   const iso = valor.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
   if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
@@ -405,10 +409,15 @@ export function CartoesControleScreen() {
   const valorCartoesSimulador = opcoesCartoesSimulador
     .filter((opcao) => simulador.cartoes_selecionados.includes(opcao.chave))
     .reduce((total, opcao) => total + (Number(opcao.item.valor) || 0), 0)
-  const valorNumericoEntrada = (valor: string) => Number(valor.replace(',', '.')) || 0
+  const valorNumericoEntrada = (valor: string) => {
+    const normalizado = valor.includes(',') ? valor.replace(/\./g, '').replace(',', '.') : valor
+    return Number(normalizado) || 0
+  }
   const totalDisponivelSimulador = ['valor_dinheiro', 'valor_pix', 'valor_conta_corrente', 'valor_salario']
     .reduce((total, chave) => total + valorNumericoEntrada(valoresEntradaSimulador[chave as CampoValorSimulador]), 0)
-  const valorNecessarioSimulador = Math.max(0, valorCartoesSimulador + valorNumericoEntrada(valoresEntradaSimulador.valor_contas) - totalDisponivelSimulador)
+  const valorNegativoSimulador = valorCartoesSimulador + valorNumericoEntrada(valoresEntradaSimulador.valor_contas)
+  const valorPositivoSimulador = totalDisponivelSimulador
+  const valorNecessarioSimulador = valorNegativoSimulador - valorPositivoSimulador
   const camposSimulador = [
     { chave: 'valor_contas' as const, titulo: 'Valor Contas', icone: 'receipt-outline' as const, cor: '#EF4444', fundo: '#FEE2E2' },
     { chave: 'valor_dinheiro' as const, titulo: 'Valor Dinheiro', icone: 'cash-outline' as const, cor: '#16A34A', fundo: '#DCFCE7' },
@@ -556,7 +565,7 @@ export function CartoesControleScreen() {
               <View style={[styles.simulatorIconCircle, { backgroundColor: '#E0F2FE' }]}><Ionicons name="card" size={16} color="#0284C7" /></View>
               <Text style={styles.simulatorRowLabel}>Valor Cartões</Text>
             </View>
-            <Text style={styles.simulatorComputedValue}>{valorCartoesSimulador > 0 ? formatarMoedaSemCentavos(valorCartoesSimulador) : '-'}</Text>
+            <Text style={styles.simulatorComputedValue}>{valorCartoesSimulador > 0 ? formatarMoedaSimulador(valorCartoesSimulador) : '-'}</Text>
           </View>
 
           <TouchableOpacity
@@ -601,29 +610,42 @@ export function CartoesControleScreen() {
           </View>}
 
           {camposSimulador.map((campo) => (
-            <View key={campo.chave} style={styles.simulatorRow}>
-              <View style={styles.simulatorLabelGroup}>
-                <View style={[styles.simulatorIconCircle, { backgroundColor: campo.fundo }]}><Ionicons name={campo.icone} size={16} color={campo.cor} /></View>
-                <Text style={styles.simulatorRowLabel}>{campo.titulo}</Text>
+            <View key={campo.chave}>
+              <View style={styles.simulatorRow}>
+                <View style={styles.simulatorLabelGroup}>
+                  <View style={[styles.simulatorIconCircle, { backgroundColor: campo.fundo }]}><Ionicons name={campo.icone} size={16} color={campo.cor} /></View>
+                  <Text style={styles.simulatorRowLabel}>{campo.titulo}</Text>
+                </View>
+                <View style={styles.simulatorInputCurrencyWrap}>
+                  <Text style={styles.simulatorInputCurrency}>R$</Text>
+                  <TextInput
+                    accessibilityLabel={campo.titulo}
+                    style={styles.simulatorValueInput}
+                    keyboardType="decimal-pad"
+                    placeholder="0,00"
+                    placeholderTextColor={colors.muted}
+                    value={valoresEntradaSimulador[campo.chave]}
+                    onChangeText={(valor) => setValoresEntradaSimulador((atual) => ({ ...atual, [campo.chave]: valor }))}
+                  />
+                </View>
               </View>
-              <TextInput
-                accessibilityLabel={campo.titulo}
-                style={styles.simulatorValueInput}
-                keyboardType="decimal-pad"
-                placeholder="0,00"
-                placeholderTextColor={colors.muted}
-                value={valoresEntradaSimulador[campo.chave]}
-                onChangeText={(valor) => setValoresEntradaSimulador((atual) => ({ ...atual, [campo.chave]: valor }))}
-              />
+              {campo.chave === 'valor_contas' && <View style={styles.simulatorNegativeSubtotalRow}>
+                <Text style={styles.simulatorNegativeSubtotalLabel}>Valor Negativo</Text>
+                <Text style={styles.simulatorNegativeSubtotalValue}>{formatarMoedaSimulador(valorNegativoSimulador)}</Text>
+              </View>}
+              {campo.chave === 'valor_salario' && <View style={styles.simulatorPositiveSubtotalRow}>
+                <Text style={styles.simulatorPositiveSubtotalLabel}>Valor Positivo</Text>
+                <Text style={styles.simulatorPositiveSubtotalValue}>{formatarMoedaSimulador(valorPositivoSimulador)}</Text>
+              </View>}
             </View>
           ))}
 
           <View style={styles.simulatorNecessaryRow}>
             <View style={styles.simulatorLabelGroup}>
-              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Ionicons name="alert-circle" size={20} color="#FFFFFF" />
               <Text style={styles.simulatorNecessaryLabel}>Valor Necessário</Text>
             </View>
-            <Text style={styles.simulatorNecessaryValue}>{formatarMoedaSemCentavos(valorNecessarioSimulador)}</Text>
+            <Text style={styles.simulatorNecessaryValue}>{formatarMoedaSimulador(valorNecessarioSimulador)}</Text>
           </View>
 
           <TouchableOpacity
@@ -999,6 +1021,8 @@ const styles = StyleSheet.create({
     color: colors.primary
   },
   simulatorCard: {
+    width: '100%',
+    alignSelf: 'stretch',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1026,12 +1050,13 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   simulatorRow: {
+    width: '100%',
     minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 14,
+    gap: 8,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
@@ -1141,18 +1166,82 @@ const styles = StyleSheet.create({
     marginTop: 1
   },
   simulatorValueInput: {
-    width: '45%',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     minHeight: 36,
-    paddingHorizontal: 8,
+    paddingHorizontal: 5,
     paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
     color: colors.text,
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'right',
+    backgroundColor: 'transparent'
+  },
+  simulatorInputCurrencyWrap: {
+    width: '44%',
+    maxWidth: '44%',
+    minWidth: 0,
+    flexShrink: 1,
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingLeft: 8,
+    paddingRight: 4,
+    overflow: 'hidden',
     backgroundColor: colors.surface
+  },
+  simulatorInputCurrency: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  simulatorNegativeSubtotalRow: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: '#F9C8AE',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  simulatorNegativeSubtotalLabel: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  simulatorNegativeSubtotalValue: {
+    color: '#DC2626',
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'right'
+  },
+  simulatorPositiveSubtotalRow: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: '#DDF2D3',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border
+  },
+  simulatorPositiveSubtotalLabel: {
+    color: '#166534',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  simulatorPositiveSubtotalValue: {
+    color: '#166534',
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'right'
   },
   simulatorNecessaryRow: {
     minHeight: 54,
@@ -1162,18 +1251,18 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: '#FFF0D5',
+    backgroundColor: '#5B5B5B',
     borderTopWidth: 1,
-    borderTopColor: '#FDBA74'
+    borderTopColor: '#4B5563'
   },
   simulatorNecessaryLabel: {
-    color: '#DC2626',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800'
   },
   simulatorNecessaryValue: {
     maxWidth: '48%',
-    color: '#DC2626',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '900',
     textAlign: 'right'
