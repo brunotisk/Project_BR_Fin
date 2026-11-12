@@ -6,11 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { HomeScreen } from '../screens/HomeScreen'
-import { CartoesScreen } from '../screens/CartoesScreen'
-import { ProjecaoParcelasScreen } from '../screens/ProjecaoParcelasScreen'
 import { TransacoesScreen } from '../screens/TransacoesScreen'
-import { CategoriasScreen } from '../screens/CategoriasScreen'
-import { FechamentoScreen } from '../screens/FechamentoScreen'
 import { CartoesControleScreen } from '../screens/CartoesControleScreen'
 import { PokerScreen } from '../screens/PokerScreen'
 import { TodoListScreen } from '../screens/TodoListScreen'
@@ -28,9 +24,6 @@ export type BottomTabParamList = {
   FinanceiroTab: undefined
   ConfiguracoesTab: undefined
   TransacoesTab: undefined
-  CartoesTab: undefined
-  ProjecaoTab: undefined
-  CategoriasTab: undefined
 }
 
 const Tab = createBottomTabNavigator<BottomTabParamList>()
@@ -105,35 +98,23 @@ function TabNavigatorContent() {
 }
 
 type FinanceParamList = {
-  FechamentoTab: undefined
   CartoesTab: undefined
   PokerTab: undefined
   HomeTab: undefined
   TransacoesTab: undefined
-  ProjecaoTab: undefined
-  CategoriasTab: undefined
-  CartoesLimitesTab: undefined
 }
 const FinanceStack = createNativeStackNavigator<FinanceParamList>()
 
 function FinanceiroNavigator() {
-  return <FinanceStack.Navigator initialRouteName="FechamentoTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
-    ['FechamentoTab', 'Fechamentos'],
+  return <FinanceStack.Navigator initialRouteName="HomeTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
     ['CartoesTab', 'Cartões'],
     ['PokerTab', 'Poker'],
     ['HomeTab', 'Resumo'],
-    ['TransacoesTab', 'Transações'],
-    ['ProjecaoTab', 'Projeção'],
-    ['CategoriasTab', 'Categorias'],
-    ['CartoesLimitesTab', 'Limites Cartões']
+    ['TransacoesTab', 'Transações']
   ] as const).map(([name, label]) => <TouchableOpacity key={name} onPress={() => navigation.navigate(name)} style={{ paddingHorizontal: 12, paddingVertical: 13, borderBottomWidth: route.name === name ? 2 : 0, borderBottomColor: colors.primary }}><Text style={{ color: route.name === name ? colors.primary : colors.muted, fontSize: 12, fontWeight: '700' }}>{label}</Text></TouchableOpacity>)}</ScrollView></View> }}>
-    <FinanceStack.Screen name="FechamentoTab" component={FechamentoScreen} />
     <FinanceStack.Screen name="CartoesTab" component={CartoesControleScreen} />
     <FinanceStack.Screen name="PokerTab" component={PokerScreen} />
     <FinanceStack.Screen name="HomeTab" component={HomeScreen} />
     <FinanceStack.Screen name="TransacoesTab" component={TransacoesScreen} />
-    <FinanceStack.Screen name="ProjecaoTab" component={ProjecaoParcelasScreen} />
-    <FinanceStack.Screen name="CategoriasTab" component={CategoriasScreen} />
-    <FinanceStack.Screen name="CartoesLimitesTab" component={CartoesScreen} />
   </FinanceStack.Navigator>
 }

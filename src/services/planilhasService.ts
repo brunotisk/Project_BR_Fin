@@ -63,19 +63,6 @@ export const LANCAMENTOS_POKER_INICIAIS: LancamentoPoker[] = [
 
 export type CashoutPorLocal = Record<string, number>
 export type CashoutsPokerMap = Record<string, CashoutPorLocal>
-export type FormaCashoutPoker = 'PIX' | 'Dinheiro'
-type CashoutComFormas = CashoutPorLocal & { __formas?: Record<string, FormaCashoutPoker> }
-
-export function obterFormasCashoutPoker(cashouts?: CashoutPorLocal): Record<string, FormaCashoutPoker> {
-  return (cashouts as CashoutComFormas | undefined)?.__formas || {}
-}
-
-export function incluirFormasCashoutPoker(
-  cashouts: CashoutPorLocal,
-  formas: Record<string, FormaCashoutPoker>
-): CashoutPorLocal {
-  return { ...cashouts, __formas: formas } as CashoutComFormas
-}
 export type SessaoPoker = { id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em?: string }
 export type FotoPoker = { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string; url: string }
 export type LocalPokerConfig = { nome: string; cor: string; storage_path?: string; aliases?: string[]; fotoUrl?: string }
@@ -661,7 +648,10 @@ export async function excluirSessaoPoker(dataCartao: string, mesBase: string): P
   const sessoesRestantes = sessoes.filter((sessao) => sessao.data_cartao !== dataCartao || sessao.mes_base !== mesBase)
   setLocalItem(STORAGE_KEYS.SESSOES_POKER, sessoesRestantes)
   const cashouts = carregarCashoutsPoker()
-  if (!lancamentosRestantes.some((item) => item.data_cartao === dataCartao) && !sessoesRestantes.some((sessao) => sessao.data_cartao === dataCartao)) delete cashouts[dataCartao]
+  delete cashouts[chaveCashoutPoker(dataCartao, mesBase)]
+  if (!lancamentosRestantes.some((item) => item.data_cartao === dataCartao) && !sessoesRestantes.some((sessao) => sessao.data_cartao === dataCartao)) {
+    delete cashouts[dataCartao]
+  }
   setLocalItem(STORAGE_KEYS.CASHOUTS, cashouts)
 }
 
@@ -800,10 +790,12 @@ export async function excluirLocalSessaoPoker(mesBase: string, dataCartao: strin
     ? { ...sessao, locais: sessao.locais.filter((nome) => nome !== local) }
     : sessao))
   const cashouts = carregarCashoutsPoker()
-  if (cashouts[dataCartao]) {
-    const restantes = { ...cashouts[dataCartao] }
+  const chave = chaveCashoutPoker(dataCartao, mesBase)
+  const cashoutSessao = cashouts[chave] || cashouts[dataCartao]
+  if (cashoutSessao) {
+    const restantes = { ...cashoutSessao }
     delete restantes[local]
-    cashouts[dataCartao] = restantes
+    cashouts[chave] = restantes
     await salvarCashoutsDaSessao(dataCartao, restantes, mesBase)
   }
 }
@@ -826,7 +818,7 @@ export async function sincronizarCashoutsPoker(): Promise<CashoutsPokerMap> {
   if (!userData?.user?.id) return carregarCashoutsPoker()
   const { data, error } = await (supabase as any)
     .from('poker_sessoes_cashout')
-    .select('data_cartao, mes_base, cashout, atualizado_em')
+    .select('data_cartao, mes_base, cashout, valores_por_local, atualizado_em')
     .order('atualizado_em', { ascending: false })
   if (error) throw error
 
@@ -837,14 +829,20 @@ export async function sincronizarCashoutsPoker(): Promise<CashoutsPokerMap> {
     else if (valores && typeof valores === 'object') local[data] = valores as CashoutPorLocal
   })
   const sincronizados: CashoutsPokerMap = { ...local }
-  const datasAplicadas = new Set<string>()
-  ;(data || []).forEach((registro: { data_cartao: string; cashout: number }) => {
-    if (datasAplicadas.has(registro.data_cartao)) return
-    datasAplicadas.add(registro.data_cartao)
+  ;(data || []).forEach((registro: { data_cartao: string; mes_base: string; cashout: number; valores_por_local?: CashoutPorLocal | null }) => {
+    const chave = chaveCashoutPoker(registro.data_cartao, registro.mes_base)
     const totalRemoto = Number(registro.cashout) || 0
-    const valoresLocais = local[registro.data_cartao]
+    const valoresLocais = local[chave] || local[registro.data_cartao]
+    const valoresRemotos = registro.valores_por_local && typeof registro.valores_por_local === 'object'
+      ? registro.valores_por_local
+      : null
+    const totalPorLocalRemoto = valoresRemotos ? obterTotalCashoutSessao(valoresRemotos) : null
+    if (valoresRemotos && Object.keys(valoresRemotos).length > 0 && totalPorLocalRemoto !== null && Math.abs(totalPorLocalRemoto - totalRemoto) < 0.01) {
+      sincronizados[chave] = valoresRemotos
+      return
+    }
     const totalLocal = valoresLocais ? obterTotalCashoutSessao(valoresLocais) : null
-    sincronizados[registro.data_cartao] = totalLocal !== null && Math.abs(totalLocal - totalRemoto) < 0.01
+    sincronizados[chave] = totalLocal !== null && Math.abs(totalLocal - totalRemoto) < 0.01
       ? valoresLocais
       : { Total: totalRemoto }
   })
@@ -857,35 +855,44 @@ export function obterTotalCashoutSessao(cashoutsDaSessao?: CashoutPorLocal): num
   return Object.entries(cashoutsDaSessao).reduce((acc, [key, value]) => key === '__formas' ? acc : acc + (Number(value) || 0), 0)
 }
 
+export function chaveCashoutPoker(dataCartao: string, mesBase: string): string {
+  return `${mesBase}|${dataCartao}`
+}
+
+export function obterCashoutPokerSessao(cashouts: CashoutsPokerMap, dataCartao: string, mesBase: string): CashoutPorLocal | undefined {
+  return cashouts[chaveCashoutPoker(dataCartao, mesBase)] || cashouts[dataCartao]
+}
+
 export async function salvarCashoutsDaSessao(
   dataCartao: string,
   valoresPorLocal: CashoutPorLocal,
   mesBase = 'Novembro'
 ): Promise<void> {
-  const atuais = carregarCashoutsPoker()
-  atuais[dataCartao] = valoresPorLocal
-  setLocalItem(STORAGE_KEYS.CASHOUTS, atuais)
-
   const total = obterTotalCashoutSessao(valoresPorLocal)
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Faça login para salvar o cashout.')
 
-  try {
-    const { data: userData } = await supabase.auth.getUser()
-    const usuarioId = userData?.user?.id
-
-    if (usuarioId) {
-      await (supabase as any).from('poker_sessoes_cashout').upsert(
-        {
-          usuario_id: usuarioId,
-          mes_base: mesBase,
-          data_cartao: dataCartao,
-          cashout: total
-        },
-        { onConflict: 'usuario_id, mes_base, data_cartao' }
-      )
-    }
-  } catch (err) {
-    console.warn('Erro ao salvar cashout no Supabase (mantido local):', err)
+  const { data, error } = await (supabase as any)
+    .from('poker_sessoes_cashout')
+    .upsert({
+      usuario_id: usuarioId,
+      mes_base: mesBase,
+      data_cartao: dataCartao,
+      cashout: total,
+      valores_por_local: valoresPorLocal
+    }, { onConflict: 'usuario_id, mes_base, data_cartao' })
+    .select('cashout, valores_por_local')
+    .single()
+  if (error) throw error
+  if (!data || Math.abs((Number(data.cashout) || 0) - total) >= 0.01) {
+    throw new Error('O Supabase não confirmou o total do cashout salvo.')
   }
+
+  const atuais = carregarCashoutsPoker()
+  atuais[chaveCashoutPoker(dataCartao, mesBase)] = valoresPorLocal
+  setLocalItem(STORAGE_KEYS.CASHOUTS, atuais)
 }
 
 export async function salvarCashoutPoker(dataCartao: string, valor: number, mesBase = 'Novembro'): Promise<void> {

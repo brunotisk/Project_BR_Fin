@@ -38,9 +38,8 @@ import {
   CashoutsPokerMap,
   LANCAMENTOS_POKER_INICIAIS,
   obterTotalCashoutSessao,
-  obterFormasCashoutPoker,
-  incluirFormasCashoutPoker,
-  FormaCashoutPoker,
+  obterCashoutPokerSessao,
+  chaveCashoutPoker,
   excluirLancamentoPoker,
   definirDiaPokerBloqueado,
   gerarUuidPoker,
@@ -197,6 +196,21 @@ function rotuloMesBase(valor: string) {
   return rotulo.charAt(0).toLocaleUpperCase('pt-BR') + rotulo.slice(1)
 }
 
+function rotuloMesBaseCurto(valor: string) {
+  const chave = normalizarMesBase(valor)
+  if (!chave) return valor
+  const [ano, mes] = chave.split('-').map(Number)
+  return `${MESES_ABREVIADOS[mes - 1]}/${String(ano).slice(-2)}`
+}
+
+function formatarValorPokerCompacto(valor: number) {
+  const absoluto = Math.abs(Number(valor) || 0)
+  const abreviado = absoluto >= 1000
+    ? `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: absoluto >= 100000 ? 0 : 1, maximumFractionDigits: absoluto >= 100000 ? 0 : 1 }).format(absoluto / 1000)}K`
+    : new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(absoluto)
+  return valor < 0 ? `(${abreviado})` : abreviado
+}
+
 export function PokerScreen() {
   const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos'>('detalhado')
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
@@ -243,8 +257,7 @@ export function PokerScreen() {
   const [cashoutDataAlvo, setCashoutDataAlvo] = useState('')
   const [cashoutMesBaseAlvo, setCashoutMesBaseAlvo] = useState('')
   const [cashoutInputsPorLocal, setCashoutInputsPorLocal] = useState<Record<string, string>>({})
-  const [cashoutFormaPorLocal, setCashoutFormaPorLocal] = useState<Record<string, FormaCashoutPoker>>({})
-  const [formaDropdownAberto, setFormaDropdownAberto] = useState<string | null>(null)
+  const [salvandoCashout, setSalvandoCashout] = useState(false)
 
   // Modal para Editar Taxa %
 
@@ -335,55 +348,56 @@ export function PokerScreen() {
       .sort((a, b) => (dataSessaoOrdenacao(b.data, b.mesBase) - dataSessaoOrdenacao(a.data, a.mesBase)) || b.mesBase.localeCompare(a.mesBase))
   }, [lancamentosFiltrados, sessoesSalvas, mesFiltro])
 
-  // Totais Gerais
-  const totalSacadoGeral = useMemo(() => {
-    return lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.valor) || 0), 0)
-  }, [lancamentosFiltrados])
-
-  const totalTaxaGeral = useMemo(() => {
-    return lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.taxa) || 0), 0)
-  }, [lancamentosFiltrados])
-
-  const totalCashoutGeral = useMemo(() => {
-    return sessoesAgrupadas.reduce((acc, sessao) => {
-      return acc + obterTotalCashoutSessao(cashouts[sessao.data])
-    }, 0)
-  }, [sessoesAgrupadas, cashouts])
-
+  const totalSacadoGeral = useMemo(() => lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.valor) || 0), 0), [lancamentosFiltrados])
+  const totalTaxaGeral = useMemo(() => lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.taxa) || 0), 0), [lancamentosFiltrados])
+  const totalCashoutGeral = useMemo(() => sessoesAgrupadas.reduce((acc, sessao) => acc + obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, sessao.data, sessao.mesBase)), 0), [sessoesAgrupadas, cashouts])
   const totalNetGeral = totalCashoutGeral - totalSacadoGeral - totalTaxaGeral
-  const hintResultadoGeral = mesFiltro === 'Todos'
-    ? 'Result. Geral'
-    : (() => {
-        const partes = mesFiltro.match(/^(\d{4})-(\d{2})$/)
-        return partes ? `Result. ${MESES_ABREVIADOS[Number(partes[2]) - 1]}/${partes[1].slice(-2)}` : `Result. ${rotuloMesBase(mesFiltro)}`
-      })()
+  const hintResultadoGeral = mesFiltro === 'Todos' ? 'Result. Geral' : (() => {
+    const partes = mesFiltro.match(/^(\d{4})-(\d{2})$/)
+    return partes ? `Result. ${MESES_ABREVIADOS[Number(partes[2]) - 1]}/${partes[1].slice(-2)}` : `Result. ${rotuloMesBase(mesFiltro)}`
+  })()
+
+  // Gráficos mensais independentes do filtro aplicado à lista de sessões.
+  const dadosGraficosMensais = useMemo(() => {
+    const sessoes = new Map<string, { mesBase: string; buyIn: number; taxas: number }>()
+    const garantirSessao = (mesBaseOriginal: string, data: string) => {
+      const mesBase = normalizarMesBase(mesBaseOriginal) || mesBaseOriginal
+      const chave = `${mesBase}|${data}`
+      if (!sessoes.has(chave)) sessoes.set(chave, { mesBase, buyIn: 0, taxas: 0 })
+      return sessoes.get(chave)!
+    }
+    lancamentos.forEach((item) => {
+      const sessao = garantirSessao(item.mes_base, item.data_cartao || 'Sem Data')
+      sessao.buyIn += Number(item.valor) || 0
+      sessao.taxas += Number(item.taxa) || 0
+    })
+    sessoesSalvas.forEach((sessao) => garantirSessao(sessao.mes_base, sessao.data_cartao))
+    const meses = new Map<string, { quantidade: number; buyIn: number; lucro: number }>()
+    sessoes.forEach((sessao, chave) => {
+      const atual = meses.get(sessao.mesBase) || { quantidade: 0, buyIn: 0, lucro: 0 }
+      atual.quantidade += 1
+      atual.buyIn += sessao.buyIn
+      atual.lucro += obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, chave.slice(chave.indexOf('|') + 1), sessao.mesBase)) - sessao.buyIn - sessao.taxas
+      meses.set(sessao.mesBase, atual)
+    })
+    return Array.from(meses.entries()).map(([mesBase, valores]) => ({ mesBase, label: rotuloMesBaseCurto(mesBase), ...valores }))
+      .sort((a, b) => b.mesBase.localeCompare(a.mesBase))
+  }, [lancamentos, sessoesSalvas, cashouts])
+  const maiorContagemSessoesMes = Math.max(1, ...dadosGraficosMensais.map((item) => item.quantidade))
+  const maiorFluxoMensal = Math.max(1, ...dadosGraficosMensais.map((item) => item.buyIn + Math.abs(item.lucro)))
 
   const dadosGraficosSessoes = useMemo(() => sessoesAgrupadas.map((sessao) => {
     const buyIn = sessao.itens.reduce((total, item) => total + (Number(item.valor) || 0), 0)
     const taxas = sessao.itens.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
-    const cashout = obterTotalCashoutSessao(cashouts[sessao.data])
+    const cashout = obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, sessao.data, sessao.mesBase))
     return { data: sessao.data, mesBase: sessao.mesBase, buyIn, cashout, net: cashout - buyIn - taxas }
   }), [sessoesAgrupadas, cashouts])
-
-  const sessoesPorMes = useMemo(() => {
-    const contagem = new Map<string, number>()
-    sessoesAgrupadas.forEach((sessao) => {
-      const mesBase = normalizarMesBase(sessao.mesBase)
-      if (mesBase) contagem.set(mesBase, (contagem.get(mesBase) || 0) + 1)
-    })
-    return Array.from(contagem.entries())
-      .map(([mesBase, quantidade]) => ({ mesBase, label: rotuloMesBase(mesBase), quantidade }))
-      .sort((a, b) => b.mesBase.localeCompare(a.mesBase))
-  }, [sessoesAgrupadas])
-  const maiorContagemSessoesMes = Math.max(1, ...sessoesPorMes.map((item) => item.quantidade))
-
   const dadosResultadoOrdenados = useMemo(() => [...dadosGraficosSessoes].sort((a, b) => {
     if (ordenacaoResultadoGrafico === 'data_asc') return dataSessaoOrdenacao(a.data, a.mesBase) - dataSessaoOrdenacao(b.data, b.mesBase)
     if (ordenacaoResultadoGrafico === 'resultado_asc') return a.net - b.net
     if (ordenacaoResultadoGrafico === 'resultado_desc') return b.net - a.net
     return dataSessaoOrdenacao(b.data, b.mesBase) - dataSessaoOrdenacao(a.data, a.mesBase)
   }), [dadosGraficosSessoes, ordenacaoResultadoGrafico])
-
   const dadosGraficosLocais = useMemo(() => {
     const porLocal = new Map<string, { buyIn: number; taxas: number; cashout: number }>()
     sessoesAgrupadas.forEach((sessao) => {
@@ -394,7 +408,19 @@ export function PokerScreen() {
         atual.taxas += Number(item.taxa) || 0
         porLocal.set(nome, atual)
       })
-      Object.entries(cashouts[sessao.data] || {}).forEach(([local, valor]) => {
+      const cashoutSessao = obterCashoutPokerSessao(cashouts, sessao.data, sessao.mesBase) || {}
+      const chavesPorLocal = Object.keys(cashoutSessao).filter((local) => local !== 'Total' && local !== '__formas')
+      // Registros antigos salvavam apenas o total. Se a sessão teve um único clube,
+      // é possível atribuir o valor; em sessões multi-clube, preservamos o total
+      // em uma categoria explícita para não inventar a divisão entre os clubes.
+      if (chavesPorLocal.length === 0 && cashoutSessao.Total !== undefined) {
+        const clubesDaSessao = Array.from(new Set(sessao.itens.map((item) => nomeLocalCanonico(item.local, configuracoesLocais))))
+        const clube = clubesDaSessao.length === 1 ? clubesDaSessao[0] : 'Cashout sem clube'
+        const atual = porLocal.get(clube) || { buyIn: 0, taxas: 0, cashout: 0 }
+        atual.cashout += Number(cashoutSessao.Total) || 0
+        porLocal.set(clube, atual)
+      }
+      Object.entries(cashoutSessao).forEach(([local, valor]) => {
         if (local === 'Total' || local === '__formas') return
         const nome = nomeLocalCanonico(local, configuracoesLocais)
         const atual = porLocal.get(nome) || { buyIn: 0, taxas: 0, cashout: 0 }
@@ -402,10 +428,8 @@ export function PokerScreen() {
         porLocal.set(nome, atual)
       })
     })
-    return Array.from(porLocal.entries()).map(([local, dados]) => ({ local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas }))
-      .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    return Array.from(porLocal.entries()).map(([local, dados]) => ({ local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas })).sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
   }, [sessoesAgrupadas, cashouts, configuracoesLocais])
-  const maiorFluxoGraficos = Math.max(1, ...dadosGraficosSessoes.flatMap((sessao) => [sessao.buyIn, sessao.cashout]))
   const maiorResultadoGraficos = Math.max(1, ...dadosGraficosSessoes.map((sessao) => Math.abs(sessao.net)))
   const maiorResultadoLocalGraficos = Math.max(1, ...dadosGraficosLocais.map((local) => Math.abs(local.net)))
 
@@ -417,10 +441,8 @@ export function PokerScreen() {
     setCashoutMesBaseAlvo(mesBase)
 
     // Identificar todos os locais da sessão, garantindo que MonteCarlo e H2 estejam disponíveis
-    const valoresSalvos = cashouts[dataCartao] || {}
+    const valoresSalvos = obterCashoutPokerSessao(cashouts, dataCartao, mesBase) || {}
     const inputsIniciais: Record<string, string> = {}
-    const formasSalvas = obterFormasCashoutPoker(valoresSalvos)
-    const formasIniciais: Record<string, FormaCashoutPoker> = {}
 
     const locaisOriginais = [...itensDaSessao.map((it) => it.local).filter(Boolean), ...locaisCadastrados, ...Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas')]
     const locaisDaSessao = Array.from(new Set(locaisOriginais.map((nome) => nomeLocalCanonico(nome, configuracoesLocais))))
@@ -428,14 +450,10 @@ export function PokerScreen() {
       const nomesEquivalentes = Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas' && nomeLocalCanonico(nome, configuracoesLocais) === loc)
       const v = nomesEquivalentes.reduce((total, nome) => total + (Number(valoresSalvos[nome]) || 0), 0)
       inputsIniciais[loc] = v > 0 ? String(v) : ''
-      const formaSalva = formasSalvas[loc] || nomesEquivalentes.map((nome) => formasSalvas[nome]).find(Boolean)
-      formasIniciais[loc] = formaSalva || 'PIX'
     })
     if (valoresSalvos.Total !== undefined) inputsIniciais.Total = Number(valoresSalvos.Total) > 0 ? String(valoresSalvos.Total) : ''
 
     setCashoutInputsPorLocal(inputsIniciais)
-    setCashoutFormaPorLocal(formasIniciais)
-    setFormaDropdownAberto(null)
     setModalCashoutVisible(true)
   }
 
@@ -450,29 +468,45 @@ export function PokerScreen() {
 
   // Soma automática dos inputs em tempo real no modal
   const somaCashoutModal = useMemo(() => {
-    return Object.values(cashoutInputsPorLocal).reduce((acc, valStr) => {
+    const entradasLocais = Object.entries(cashoutInputsPorLocal).filter(([local]) => local !== 'Total')
+    const temValorPorLocal = entradasLocais.some(([, valStr]) => Boolean(valStr.trim()))
+    const entradas = temValorPorLocal ? entradasLocais.map(([, valStr]) => valStr) : [cashoutInputsPorLocal.Total || '']
+    return entradas.reduce((acc, valStr) => {
       const num = parseFloat((valStr || '').replace(',', '.')) || 0
       return acc + num
     }, 0)
   }, [cashoutInputsPorLocal])
 
   const salvarCashoutsModal = async () => {
+    if (salvandoCashout) return
     if (diasBloqueados[cashoutDataAlvo]) {
       setModalCashoutVisible(false)
       notify('Dia travado', 'Reabra o dia para editar o cash out.')
       return
     }
     const mapaSalvar: CashoutPorLocal = {}
-    for (const [loc, valStr] of Object.entries(cashoutInputsPorLocal)) {
+    const entradasLocais = Object.entries(cashoutInputsPorLocal).filter(([loc]) => loc !== 'Total')
+    const temValorPorLocal = entradasLocais.some(([, valStr]) => Boolean(valStr.trim()))
+    for (const [loc, valStr] of entradasLocais) {
       const num = parseFloat((valStr || '').replace(',', '.')) || 0
       mapaSalvar[loc] = num
     }
+    if (!temValorPorLocal && cashoutInputsPorLocal.Total !== undefined) {
+      mapaSalvar.Total = parseFloat(cashoutInputsPorLocal.Total.replace(',', '.')) || 0
+    }
 
-    const mapaComFormas = incluirFormasCashoutPoker(mapaSalvar, cashoutFormaPorLocal)
-    await salvarCashoutsDaSessao(cashoutDataAlvo, mapaComFormas, cashoutMesBaseAlvo || mesFiltro)
-    setCashouts((prev) => ({ ...prev, [cashoutDataAlvo]: mapaComFormas }))
-    setModalCashoutVisible(false)
-    notify('CASHout Salvo', `Total de ${formatCurrency(somaCashoutModal)} para ${formatarDataPoker(cashoutDataAlvo, cashoutMesBaseAlvo)}.`)
+    setSalvandoCashout(true)
+    try {
+      const mesBase = cashoutMesBaseAlvo || mesFiltro
+      await salvarCashoutsDaSessao(cashoutDataAlvo, mapaSalvar, mesBase)
+      setCashouts((prev) => ({ ...prev, [chaveCashoutPoker(cashoutDataAlvo, mesBase)]: mapaSalvar }))
+      setModalCashoutVisible(false)
+      notify('CASHout Salvo', `Total de ${formatCurrency(somaCashoutModal)} para ${formatarDataPoker(cashoutDataAlvo, mesBase)}.`)
+    } catch (erro: any) {
+      notify('Não foi possível salvar o cashout', erro?.message || 'Confira sua conexão e tente novamente.')
+    } finally {
+      setSalvandoCashout(false)
+    }
   }
 
   // ==========================================
@@ -850,19 +884,12 @@ export function PokerScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ======================================================== */}
-        {/* CARDS SUPERIORES ADAPTADOS PARA CELULAR */}
-        {/* ======================================================== */}
-        <View style={styles.kpiRow}>
-          {/* Card Buy-ins */}
+        {visualizacaoSessoes !== 'graficos' && <View style={styles.kpiRow}>
           <View style={[styles.kpiCard, { borderLeftColor: '#0284C7' }]}>
             <Text style={styles.kpiLabel}>Buy-ins</Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#0369A1' }]}>
-              {formatValorKpi(totalSacadoGeral)}
-            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#0369A1' }]}>{formatValorKpi(totalSacadoGeral)}</Text>
             <Text style={styles.kpiHint}>Taxas: R$ {formatValorKpi(totalTaxaGeral)}</Text>
           </View>
-
           <View style={[styles.kpiCard, { borderLeftColor: '#7C3AED' }]}>
             <Text style={styles.kpiLabel}>Cashout</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#6D28D9' }]}>{formatValorKpi(totalCashoutGeral)}</Text>
@@ -870,12 +897,77 @@ export function PokerScreen() {
           </View>
           <View style={[styles.kpiCard, { borderLeftColor: totalNetGeral >= 0 ? '#16A34A' : '#DC2626' }]}>
             <Text style={styles.kpiLabel}>Líquido (Net)</Text>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>
-              {formatarResultadoPoker(totalNetGeral, formatoNegativoPoker)}
-            </Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: totalNetGeral >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(totalNetGeral, formatoNegativoPoker)}</Text>
             <Text style={styles.kpiHint}>{hintResultadoGeral}</Text>
           </View>
-        </View>
+        </View>}
+
+        {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
+          <View style={styles.graphCard}>
+            <Text style={styles.graphTitle}>Sessões por mês</Text>
+            {dadosGraficosMensais.length === 0 ? <Text style={styles.graphEmpty}>Sem dados para exibir.</Text> : dadosGraficosMensais.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
+              <Text numberOfLines={1} style={styles.graphMonthlySessionLabel}>{mes.label}</Text>
+              <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(3, (mes.quantidade / maiorContagemSessoesMes) * 100)}%`, backgroundColor: '#0284C7' }]} /></View>
+              <Text style={styles.graphMonthlySessionCount}>{mes.quantidade}</Text>
+            </View>)}
+          </View>
+          <View style={styles.graphCard}>
+            <Text style={styles.graphTitle}>Buy-in e lucro por mês</Text>
+            <View style={styles.graphLegend}>
+              <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#0284C7' }]} /><Text style={styles.graphLegendText}>Buy-in</Text></View>
+              <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#15803D' }]} /><Text style={styles.graphLegendText}>Lucro</Text></View>
+              <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#DC2626' }]} /><Text style={styles.graphLegendText}>Prejuízo</Text></View>
+            </View>
+            {dadosGraficosMensais.length === 0 ? <Text style={styles.graphEmpty}>Sem dados para exibir.</Text> : dadosGraficosMensais.map((mes, index) => {
+              const buyInWidth = mes.buyIn > 0 ? Math.max(2, Math.min(100, (mes.buyIn / maiorFluxoMensal) * 100)) : 0
+              const lucroWidth = mes.lucro > 0 ? Math.max(2, Math.min(100 - buyInWidth, (mes.lucro / maiorFluxoMensal) * 100)) : 0
+              const prejuizoWidth = mes.lucro < 0 ? Math.max(2, Math.min(100 - buyInWidth, (Math.abs(mes.lucro) / maiorFluxoMensal) * 100)) : 0
+              return <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
+                <Text numberOfLines={1} style={[styles.graphMonthlySessionLabel, styles.graphMonthlyFinanceLabel]}>{mes.label}</Text>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.graphMonthlyTrack}>
+                    {prejuizoWidth > 0 && <View style={{ width: `${prejuizoWidth}%`, height: 10, minWidth: 2, flexShrink: 0, backgroundColor: '#DC2626' }} />}
+                    {buyInWidth > 0 && <View style={{ width: `${buyInWidth}%`, height: 10, minWidth: 2, flexShrink: 0, backgroundColor: '#0284C7' }} />}
+                    {lucroWidth > 0 && <View style={{ width: `${lucroWidth}%`, height: 10, minWidth: 2, flexShrink: 0, backgroundColor: '#15803D' }} />}
+                  </View>
+                </View>
+                <Text numberOfLines={1} adjustsFontSizeToFit style={styles.graphMonthlyValues}>
+                  {mes.lucro >= 0 ? <>
+                    <Text style={styles.graphMonthlyBuyInValue}>{formatarValorPokerCompacto(mes.buyIn)}</Text>
+                    <Text style={styles.graphMonthlyValueSeparator}> | </Text>
+                    <Text style={styles.graphMonthlyProfitValue}>{formatarValorPokerCompacto(mes.lucro)}</Text>
+                  </> : <>
+                    <Text style={styles.graphMonthlyLossValue}>{formatarValorPokerCompacto(mes.lucro)}</Text>
+                    <Text style={styles.graphMonthlyValueSeparator}> | </Text>
+                    <Text style={styles.graphMonthlyBuyInValue}>{formatarValorPokerCompacto(mes.buyIn)}</Text>
+                  </>}
+                </Text>
+              </View>
+            })}
+          </View>
+          <View style={styles.graphCard}>
+            <Text style={styles.graphTitle}>Resultado por sessão</Text>
+            <View style={styles.graphSortControls}>
+              {([
+                ['data_desc', 'Data ↓'], ['data_asc', 'Data ↑'],
+                ['resultado_desc', 'Resultado ↓'], ['resultado_asc', 'Resultado ↑']
+              ] as const).map(([valor, rotulo]) => <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: ordenacaoResultadoGrafico === valor }} onPress={() => setOrdenacaoResultadoGrafico(valor)} style={[styles.graphSortButton, ordenacaoResultadoGrafico === valor && styles.graphSortButtonActive]}><Text style={[styles.graphSortText, ordenacaoResultadoGrafico === valor && styles.graphSortTextActive]}>{rotulo}</Text></TouchableOpacity>)}
+            </View>
+            {dadosResultadoOrdenados.map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+              <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
+              <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(sessao.net) / maiorResultadoGraficos) * 100)}%`, backgroundColor: sessao.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
+              <Text style={[styles.graphResultValue, { color: sessao.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(sessao.net, formatoNegativoPoker)}</Text>
+            </View>)}
+          </View>
+          {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
+            <Text style={styles.graphTitle}>Resultado por clube</Text>
+            {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+              <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
+              <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
+              <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
+            </View>)}
+          </View>}
+        </View>}
 
         {/* Filtro por ano e mês base */}
         <View style={styles.filtrosRow}>
@@ -891,57 +983,6 @@ export function PokerScreen() {
           </ScrollView>}
         </View>
 
-        {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
-          {dadosGraficosSessoes.length === 0 ? <View style={styles.graphCard}><Text style={styles.graphTitle}>Sem dados para exibir</Text><Text style={styles.graphEmpty}>Adicione lançamentos ou escolha outro mês base para ver os gráficos.</Text></View> : <>
-            <View style={styles.graphCard}>
-              <Text style={styles.graphTitle}>Sessões por mês</Text>
-              {sessoesPorMes.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
-                <Text numberOfLines={1} style={styles.graphMonthlySessionLabel}>{mes.label}</Text>
-                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(3, (mes.quantidade / maiorContagemSessoesMes) * 100)}%`, backgroundColor: '#0284C7' }]} /></View>
-                <Text style={styles.graphMonthlySessionCount}>{mes.quantidade}</Text>
-              </View>)}
-            </View>
-
-            <View style={styles.graphCard}>
-              <Text style={styles.graphTitle}>Buy-ins e Cashout por sessão</Text>
-              <View style={styles.graphLegend}>
-                <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#0284C7' }]} /><Text style={styles.graphLegendText}>Buy-ins</Text></View>
-                <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#7C3AED' }]} /><Text style={styles.graphLegendText}>Cashout</Text></View>
-              </View>
-              {dadosGraficosSessoes.slice(0, 6).map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphSessionRow, sessao.net < 0 && styles.graphSessionRowNegative, index === 0 && { borderTopWidth: 0 }]}>
-                <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
-                <View style={styles.graphSeries}>
-                  <View style={styles.graphBarLine}><View style={styles.graphFlowTrack}><View style={[styles.graphBar, { width: `${Math.max(2, (sessao.buyIn / maiorFluxoGraficos) * 100)}%`, backgroundColor: '#0284C7' }]} /></View><Text style={styles.graphValue}>{formatValorKpi(sessao.buyIn)}</Text></View>
-                  <View style={styles.graphBarLine}><View style={styles.graphFlowTrack}><View style={[styles.graphBar, { width: `${Math.max(2, (sessao.cashout / maiorFluxoGraficos) * 100)}%`, backgroundColor: '#7C3AED' }]} /></View><Text style={styles.graphValue}>{formatValorKpi(sessao.cashout)}</Text></View>
-                </View>
-              </View>)}
-            </View>
-
-            <View style={styles.graphCard}>
-              <Text style={styles.graphTitle}>Resultado por sessão</Text>
-              <View style={styles.graphSortControls}>
-                {([
-                  ['data_desc', 'Data ↓'], ['data_asc', 'Data ↑'],
-                  ['resultado_desc', 'Resultado ↓'], ['resultado_asc', 'Resultado ↑']
-                ] as const).map(([valor, rotulo]) => <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: ordenacaoResultadoGrafico === valor }} onPress={() => setOrdenacaoResultadoGrafico(valor)} style={[styles.graphSortButton, ordenacaoResultadoGrafico === valor && styles.graphSortButtonActive]}><Text style={[styles.graphSortText, ordenacaoResultadoGrafico === valor && styles.graphSortTextActive]}>{rotulo}</Text></TouchableOpacity>)}
-              </View>
-              {dadosResultadoOrdenados.map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
-                <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
-                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(sessao.net) / maiorResultadoGraficos) * 100)}%`, backgroundColor: sessao.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
-                <Text style={[styles.graphResultValue, { color: sessao.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(sessao.net, formatoNegativoPoker)}</Text>
-              </View>)}
-            </View>
-
-            {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
-              <Text style={styles.graphTitle}>Resultado por clube</Text>
-              {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
-                <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
-                <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
-                <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
-              </View>)}
-            </View>}
-          </>}
-        </View>}
 
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
@@ -950,7 +991,7 @@ export function PokerScreen() {
           const { data: dataSessao, mesBase: mesBaseSessao, itens } = sessao
           const buyInSessao = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0)
           const taxaSessao = itens.reduce((s, it) => s + (Number(it.taxa) || 0), 0)
-          const cashoutsDoDia = cashouts[dataSessao] || {}
+          const cashoutsDoDia = obterCashoutPokerSessao(cashouts, dataSessao, mesBaseSessao) || {}
           const cashoutTotalSessao = obterTotalCashoutSessao(cashoutsDoDia)
           const netSessao = cashoutTotalSessao - buyInSessao - taxaSessao
           const chavesCashoutLocais = Object.keys(cashoutsDoDia).filter((nome) => nome !== 'Total' && nome !== '__formas')
@@ -1203,34 +1244,6 @@ export function PokerScreen() {
                     value={cashoutInputsPorLocal[localNome]}
                     onChangeText={(v) => handleAlterarInputLocal(localNome, v)}
                   />
-                  <View style={styles.cashoutFormaContainer}>
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      accessibilityLabel={`Forma de pagamento de ${localNome}: ${cashoutFormaPorLocal[localNome] || 'PIX'}`}
-                      style={styles.cashoutFormaBotao}
-                      onPress={() => setFormaDropdownAberto((aberto) => aberto === localNome ? null : localNome)}
-                    >
-                      <Text style={styles.cashoutFormaTexto}>{cashoutFormaPorLocal[localNome] || 'PIX'}</Text>
-                      <Ionicons name={formaDropdownAberto === localNome ? 'chevron-up' : 'chevron-down'} size={14} color={colors.text} />
-                    </TouchableOpacity>
-                    {formaDropdownAberto === localNome && (
-                      <View style={styles.cashoutFormaOpcoes}>
-                        {(['PIX', 'Dinheiro'] as FormaCashoutPoker[]).map((forma) => (
-                          <TouchableOpacity
-                            key={forma}
-                            style={styles.cashoutFormaOpcao}
-                            onPress={() => {
-                              setCashoutFormaPorLocal((prev) => ({ ...prev, [localNome]: forma }))
-                              setFormaDropdownAberto(null)
-                            }}
-                          >
-                            <Text style={styles.cashoutFormaTexto}>{forma}</Text>
-                            {cashoutFormaPorLocal[localNome] === forma && <Ionicons name="checkmark" size={15} color={colors.primary} />}
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -1257,8 +1270,8 @@ export function PokerScreen() {
                 <Text style={styles.btnCancelarTexto}>Cancelar</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.btnSalvar} onPress={salvarCashoutsModal}>
-                <Text style={styles.btnSalvarTexto}>Confirmar</Text>
+              <TouchableOpacity disabled={salvandoCashout} style={[styles.btnSalvar, salvandoCashout && { opacity: 0.6 }]} onPress={salvarCashoutsModal}>
+                <Text style={styles.btnSalvarTexto}>{salvandoCashout ? 'Salvando…' : 'Confirmar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2230,47 +2243,6 @@ const styles = StyleSheet.create({
     color: '#713F12',
     textAlign: 'right'
   },
-  cashoutFormaContainer: {
-    width: 90,
-    marginLeft: 8,
-    position: 'relative',
-    zIndex: 2
-  },
-  cashoutFormaBotao: {
-    minHeight: 42,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  cashoutFormaTexto: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text
-  },
-  cashoutFormaOpcoes: {
-    position: 'absolute',
-    top: 44,
-    right: 0,
-    width: 105,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: 5,
-    zIndex: 10
-  },
-  cashoutFormaOpcao: {
-    minHeight: 38,
-    paddingHorizontal: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
   graphScreen: {
     gap: 12,
     marginBottom: 14
@@ -2376,10 +2348,33 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border
   },
   graphMonthlySessionLabel: {
-    width: 112,
+    width: 58,
     color: colors.textSecondary,
     fontSize: 11,
     fontWeight: '700'
+  },
+  graphMonthlyFinanceLabel: {
+    width: 48,
+    textTransform: 'lowercase'
+  },
+  graphMonthlyValues: {
+    width: 96,
+    textAlign: 'right',
+    fontSize: 10,
+    fontWeight: '800'
+  },
+  graphMonthlyBuyInValue: {
+    color: '#0369A1',
+  },
+  graphMonthlyValueSeparator: {
+    color: colors.muted,
+    fontWeight: '500'
+  },
+  graphMonthlyProfitValue: {
+    color: '#15803D'
+  },
+  graphMonthlyLossValue: {
+    color: '#DC2626'
   },
   graphMonthlySessionCount: {
     width: 28,
@@ -2391,6 +2386,14 @@ const styles = StyleSheet.create({
   graphResultTrack: {
     flex: 1,
     height: 8,
+    borderRadius: 5,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceHover
+  },
+  graphMonthlyTrack: {
+    width: '100%',
+    height: 10,
+    flexDirection: 'row',
     borderRadius: 5,
     overflow: 'hidden',
     backgroundColor: colors.surfaceHover

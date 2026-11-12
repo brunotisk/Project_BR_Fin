@@ -12,6 +12,8 @@ type Relacao = {
   referencedColumns: string[]
 }
 
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
+
 export type Database = {
   public: {
     Tables: {
@@ -61,6 +63,12 @@ export type Database = {
         Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em: string }
         Insert: { id?: string; usuario_id?: string; mes_base: string; data_cartao: string; locais?: string[]; criado_em?: string }
         Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; locais?: string[]; criado_em?: string }
+        Relationships: Relacao[]
+      }
+      poker_sessoes_cashout: {
+        Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; cashout: number; valores_por_local: Json; criado_em: string; atualizado_em: string }
+        Insert: { id?: string; usuario_id?: string; mes_base?: string; data_cartao: string; cashout?: number; valores_por_local?: Json; criado_em?: string; atualizado_em?: string }
+        Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; cashout?: number; valores_por_local?: Json; criado_em?: string; atualizado_em?: string }
         Relationships: Relacao[]
       }
       poker_sessao_fotos: {

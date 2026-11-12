@@ -16,6 +16,7 @@ import { ProjecaoParcelasScreen } from '../screens/ProjecaoParcelasScreen'
 import { NovoItemScreen } from '../screens/NovoItemScreen'
 import { FechamentoScreen } from '../screens/FechamentoScreen'
 import { CartoesControleScreen } from '../screens/CartoesControleScreen'
+import { CartoesScreen } from '../screens/CartoesScreen'
 import { PokerScreen } from '../screens/PokerScreen'
 import { colors } from '../theme'
 
@@ -34,6 +35,7 @@ export type RootStackParamList = {
   ProjecaoParcelas: undefined
   Fechamento: undefined
   CartoesControle: undefined
+  LimitesCartoes: undefined
   Poker: undefined
   NovoItem: { tipo: 'tarefa' | 'compromisso'; data?: string; horario?: string; horarioFim?: string; agendaId?: string; mostrarNaAgenda?: boolean } | undefined
 }
@@ -95,6 +97,11 @@ export function AppNavigator() {
             name="CartoesControle"
             component={CartoesControleScreen}
             options={{ title: 'Cartões' }}
+          />
+          <Stack.Screen
+            name="LimitesCartoes"
+            component={CartoesScreen}
+            options={{ title: 'Limite de cartões' }}
           />
           <Stack.Screen
             name="Poker"

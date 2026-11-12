@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,19 +16,11 @@ import { useAuth } from '../services/AuthProvider'
 import { colors } from '../theme'
 import { notify } from '../utils/notify'
 
-const MIN_PASSWORD_LENGTH = 6
-
 export function LoginScreen() {
-  const { signIn, signUp, resetPassword } = useAuth()
-  const [modo, setModo] = useState<'login' | 'cadastro'>('login')
-
-  const [nome, setNome] = useState('')
+  const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-
   const [mostrarSenha, setMostrarSenha] = useState(false)
-  const [mostrarConfirmarSenha, setMostrarConfirmarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erros, setErros] = useState<{ [key: string]: string }>({})
 
@@ -44,19 +37,8 @@ export function LoginScreen() {
       novosErros.email = 'E-mail em formato inválido'
     }
 
-    if (!password) {
+    if (!password.trim()) {
       novosErros.password = 'Informe sua senha'
-    } else if (password.length < MIN_PASSWORD_LENGTH) {
-      novosErros.password = `A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`
-    }
-
-    if (modo === 'cadastro') {
-      if (!nome.trim()) {
-        novosErros.nome = 'Informe seu nome completo'
-      }
-      if (password !== confirmPassword) {
-        novosErros.confirmPassword = 'As senhas não coincidem'
-      }
     }
 
     if (Object.keys(novosErros).length > 0) {
@@ -68,44 +50,9 @@ export function LoginScreen() {
     setLoading(true)
 
     try {
-      if (modo === 'login') {
-        const { error } = await signIn(email.trim(), password)
-        if (error) {
-          notify('Não foi possível entrar', error.message || 'Verifique suas credenciais e tente novamente.')
-        }
-      } else {
-        const { error } = await signUp(email.trim(), password, nome.trim())
-        if (error) {
-          notify('Erro no cadastro', error.message || 'Não foi possível criar sua conta.')
-        } else {
-          notify(
-            'Conta Criada com Sucesso! 🎉',
-            'Se a confirmação estiver habilitada no seu projeto, verifique sua caixa de e-mail para validar.'
-          )
-          setModo('login')
-        }
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleEsqueciSenha() {
-    if (!email.trim() || !validarEmail(email.trim())) {
-      notify('Atenção', 'Digite seu e-mail no campo acima para enviarmos o link de recuperação.')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const { error } = await resetPassword(email.trim())
+      const { error } = await signIn(email.trim(), password)
       if (error) {
-        notify('Erro ao solicitar recuperação', error.message)
-      } else {
-        notify(
-          'E-mail Enviado! 📬',
-          `Enviamos as instruções de recuperação para ${email.trim()}. Verifique sua caixa de entrada e spam.`
-        )
+        notify('Não foi possível entrar', error.message || 'Verifique suas credenciais e tente novamente.')
       }
     } finally {
       setLoading(false)
@@ -121,66 +68,21 @@ export function LoginScreen() {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Topo / Marca com Visual Fintech */}
+        {/* Identidade visual do PWA */}
         <View style={styles.brandContainer}>
-          <View style={styles.logoCircle}>
-            <Ionicons name="wallet" size={36} color="#fff" />
-          </View>
-          <Text style={styles.brandTitle}>BR Fin</Text>
-          <Text style={styles.brandSubtitle}>
-            Gestão financeira inteligente, faturas e projeção de cartões
-          </Text>
+          <View pointerEvents="none" style={styles.artCircleLarge} />
+          <View pointerEvents="none" style={styles.artCircleSmall} />
+          <Image source={require('../../assets/plenna/icon-192.png')} style={styles.brandLogo} resizeMode="contain" />
+          <Text style={styles.brandTitle}>Plenna</Text>
+          <Text style={styles.brandSubtitle}>FINANÇAS  •  AGENDA  •  TAREFAS</Text>
         </View>
 
         {/* Card Principal */}
         <View style={styles.card}>
-          {/* Seletor de Modo (Abas) */}
-          <View style={styles.tabSelector}>
-            <TouchableOpacity
-              onPress={() => {
-                setModo('login')
-                setErros({})
-              }}
-              style={[styles.tabButton, modo === 'login' && styles.tabButtonActive]}
-            >
-              <Text style={[styles.tabText, modo === 'login' && styles.tabTextActive]}>
-                Entrar
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                setModo('cadastro')
-                setErros({})
-              }}
-              style={[styles.tabButton, modo === 'cadastro' && styles.tabButtonActive]}
-            >
-              <Text style={[styles.tabText, modo === 'cadastro' && styles.tabTextActive]}>
-                Criar Conta
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Formulário */}
           <View style={styles.form}>
-            {/* Campo Nome (Apenas no Cadastro) */}
-            {modo === 'cadastro' && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Seu Nome Completo</Text>
-                <View style={[styles.inputBox, !!erros.nome && styles.inputBoxError]}>
-                  <Ionicons name="person-outline" size={20} color={colors.muted} style={styles.inputIcon} />
-                  <TextInput
-                    value={nome}
-                    onChangeText={setNome}
-                    placeholder="Ex: Ana Silva"
-                    placeholderTextColor={colors.muted}
-                    autoCapitalize="words"
-                    style={styles.textInput}
-                  />
-                </View>
-                {erros.nome ? <Text style={styles.errorText}>{erros.nome}</Text> : null}
-              </View>
-            )}
+            <Text style={styles.formTitle}>Acesse sua conta</Text>
+            <Text style={styles.formSubtitle}>Entre com seu e-mail e senha para continuar.</Text>
 
             {/* Campo E-mail */}
             <View style={styles.inputGroup}>
@@ -196,6 +98,7 @@ export function LoginScreen() {
                   autoCorrect={false}
                   autoComplete="email"
                   keyboardType="email-address"
+                  returnKeyType="next"
                   style={styles.textInput}
                 />
               </View>
@@ -204,14 +107,7 @@ export function LoginScreen() {
 
             {/* Campo Senha */}
             <View style={styles.inputGroup}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.inputLabel}>Senha</Text>
-                {modo === 'login' && (
-                  <TouchableOpacity onPress={handleEsqueciSenha}>
-                    <Text style={styles.esqueciSenhaTexto}>Esqueceu a senha?</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              <Text style={styles.inputLabel}>Senha</Text>
               <View style={[styles.inputBox, !!erros.password && styles.inputBoxError]}>
                 <Ionicons name="lock-closed-outline" size={20} color={colors.muted} style={styles.inputIcon} />
                 <TextInput
@@ -222,6 +118,8 @@ export function LoginScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry={!mostrarSenha}
+                  returnKeyType="go"
+                  onSubmitEditing={handleAcaoPrincipal}
                   style={styles.textInput}
                 />
                 <TouchableOpacity onPress={() => setMostrarSenha(!mostrarSenha)} style={styles.eyeBtn}>
@@ -235,39 +133,6 @@ export function LoginScreen() {
               {erros.password ? <Text style={styles.errorText}>{erros.password}</Text> : null}
             </View>
 
-            {/* Campo Confirmar Senha (Apenas no Cadastro) */}
-            {modo === 'cadastro' && (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Confirmar Senha</Text>
-                <View style={[styles.inputBox, !!erros.confirmPassword && styles.inputBoxError]}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={colors.muted} style={styles.inputIcon} />
-                  <TextInput
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    placeholder="Repita sua senha"
-                    placeholderTextColor={colors.muted}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    secureTextEntry={!mostrarConfirmarSenha}
-                    style={styles.textInput}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setMostrarConfirmarSenha(!mostrarConfirmarSenha)}
-                    style={styles.eyeBtn}
-                  >
-                    <Ionicons
-                      name={mostrarConfirmarSenha ? 'eye-off-outline' : 'eye-outline'}
-                      size={20}
-                      color={colors.muted}
-                    />
-                  </TouchableOpacity>
-                </View>
-                {erros.confirmPassword ? (
-                  <Text style={styles.errorText}>{erros.confirmPassword}</Text>
-                ) : null}
-              </View>
-            )}
-
             {/* Botão Principal com Efeito Visual */}
             <TouchableOpacity
               onPress={handleAcaoPrincipal}
@@ -279,7 +144,7 @@ export function LoginScreen() {
               ) : (
                 <View style={styles.btnContent}>
                   <Text style={styles.btnPrincipalTexto}>
-                    {modo === 'login' ? 'Entrar no Sistema' : 'Criar Minha Conta'}
+                    Entrar no sistema
                   </Text>
                   <Ionicons name="arrow-forward" size={18} color="#fff" />
                 </View>
@@ -315,35 +180,58 @@ const styles = StyleSheet.create({
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 28
-  },
-  logoCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 22,
+    marginBottom: 22,
+    paddingVertical: 25,
+    paddingHorizontal: 20,
+    borderRadius: 24,
     backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6
+    overflow: 'hidden'
+  },
+  artCircleLarge: {
+    position: 'absolute',
+    width: 230,
+    height: 130,
+    top: -76,
+    right: -34,
+    borderRadius: 115,
+    backgroundColor: '#8DBB9A',
+    opacity: 0.75,
+    transform: [{ rotate: '-18deg' }]
+  },
+  artCircleSmall: {
+    position: 'absolute',
+    width: 180,
+    height: 95,
+    bottom: -65,
+    left: -34,
+    borderRadius: 90,
+    backgroundColor: '#C7E66B',
+    opacity: 0.9,
+    transform: [{ rotate: '-18deg' }]
+  },
+  brandLogo: {
+    width: 66,
+    height: 66,
+    borderRadius: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245,243,234,0.28)'
   },
   brandTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
-    color: colors.text,
+    color: '#F5F3EA',
     letterSpacing: -0.5
   },
   brandSubtitle: {
-    fontSize: 14,
-    color: colors.muted,
+    fontSize: 10,
+    color: '#DCE8DC',
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 8,
     maxWidth: 280,
-    lineHeight: 20
+    lineHeight: 20,
+    fontWeight: '700',
+    letterSpacing: 1.5
   },
   card: {
     backgroundColor: colors.surface,
@@ -357,55 +245,29 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 3
   },
-  tabSelector: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    padding: 4,
-    borderRadius: 12,
-    marginBottom: 20
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8
-  },
-  tabButtonActive: {
-    backgroundColor: colors.surface,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 1
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.muted
-  },
-  tabTextActive: {
-    color: colors.text,
-    fontWeight: '700'
-  },
   form: {
     gap: 16
   },
+  formTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3
+  },
+  formSubtitle: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: -10,
+    marginBottom: 2
+  },
   inputGroup: {
     gap: 6
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
   },
   inputLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.text
-  },
-  esqueciSenhaTexto: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.primary
   },
   inputBox: {
     flexDirection: 'row',

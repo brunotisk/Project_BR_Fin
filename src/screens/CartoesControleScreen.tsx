@@ -182,7 +182,8 @@ export function CartoesControleScreen() {
           item
         }))
       }))
-      setOpcoesCartoesSimulador(opcoes.flat())
+      const opcoesUnicas = new Map(opcoes.flat().map((opcao) => [opcao.chave, opcao]))
+      setOpcoesCartoesSimulador(Array.from(opcoesUnicas.values()))
     } catch (erro) {
       console.warn('Erro ao carregar cartões do simulador:', erro)
     }
@@ -406,8 +407,10 @@ export function CartoesControleScreen() {
   const mesesDisponiveis = OPCOES_MESES_CONTROLE
   const itensDoMes = [...vigentes, ...detalhados].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
   const totalAPagar = itensDoMes.reduce((total, item) => total + (Number(item.valor) || 0), 0)
-  const valorCartoesSimulador = opcoesCartoesSimulador
-    .filter((opcao) => simulador.cartoes_selecionados.includes(opcao.chave))
+  const chavesCartoesSelecionados = new Set(simulador.cartoes_selecionados)
+  const cartoesSimuladorSelecionados = opcoesCartoesSimulador
+    .filter((opcao) => chavesCartoesSelecionados.has(opcao.chave))
+  const valorCartoesSimulador = cartoesSimuladorSelecionados
     .reduce((total, opcao) => total + (Number(opcao.item.valor) || 0), 0)
   const valorNumericoEntrada = (valor: string) => {
     const normalizado = valor.includes(',') ? valor.replace(/\./g, '').replace(',', '.') : valor
@@ -427,12 +430,13 @@ export function CartoesControleScreen() {
   ]
 
   const alternarCartaoSimulador = (chave: string) => {
-    setSimulador((atual) => ({
-      ...atual,
-      cartoes_selecionados: atual.cartoes_selecionados.includes(chave)
-        ? atual.cartoes_selecionados.filter((item) => item !== chave)
-        : [...atual.cartoes_selecionados, chave]
-    }))
+    const chavesValidas = new Set(opcoesCartoesSimulador.map((opcao) => opcao.chave))
+    setSimulador((atual) => {
+      const selecionados = new Set(atual.cartoes_selecionados.filter((item) => chavesValidas.has(item)))
+      if (selecionados.has(chave)) selecionados.delete(chave)
+      else selecionados.add(chave)
+      return { ...atual, cartoes_selecionados: Array.from(selecionados) }
+    })
   }
 
   const salvarDadosSimulador = async () => {
@@ -576,7 +580,7 @@ export function CartoesControleScreen() {
             onPress={() => setSeletorCartoesAberto((aberto) => !aberto)}
           >
             <Text style={styles.simulatorSelectHint}>
-              {simulador.cartoes_selecionados.length > 0 ? `${simulador.cartoes_selecionados.length} cartão(ões) selecionado(s)` : 'Selecionar cartões do mês anterior, atual ou seguinte'}
+              {cartoesSimuladorSelecionados.length > 0 ? `${cartoesSimuladorSelecionados.length} cartão(ões) selecionado(s)` : 'Selecionar cartões do mês anterior, atual ou seguinte'}
             </Text>
             <Ionicons name={seletorCartoesAberto ? 'chevron-up' : 'chevron-down'} size={17} color={colors.primary} />
           </TouchableOpacity>
