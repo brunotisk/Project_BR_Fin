@@ -212,7 +212,7 @@ function formatarValorPokerCompacto(valor: number) {
 }
 
 export function PokerScreen() {
-  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos'>('detalhado')
+  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes'>('detalhado')
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
@@ -863,28 +863,31 @@ export function PokerScreen() {
           <View style={styles.headerTitleGroup}>
             <Text style={styles.title}>Poker</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={[styles.btnNovoTopo, { width: 42, justifyContent: 'center' }]} accessibilityRole="button" accessibilityLabel="Criar sessão" onPress={abrirNovaSessao}>
-              <Ionicons name="add" size={22} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          {visualizacaoSessoes === 'detalhado' && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar lançamentos" onPress={abrirNovaSessao} style={styles.viewModeButton}>
+            <Ionicons name="add-circle-outline" size={15} color={colors.primary} />
+            <Text style={styles.viewModeButtonText}>Add. lançamentos</Text>
+          </TouchableOpacity>}
         </View>
         <View style={styles.viewModeSwitch}>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
-            <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
-          </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
             <Ionicons name="grid-outline" size={15} color={visualizacaoSessoes === 'resumido' ? '#fff' : colors.primary} />
             <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumido</Text>
           </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'graficos' }} onPress={() => setVisualizacaoSessoes('graficos')} style={[styles.viewModeButton, visualizacaoSessoes === 'graficos' && styles.viewModeButtonActive]}>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
+            <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
+          </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'graficos' }} onPress={() => setVisualizacaoSessoes('graficos')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'graficos' && styles.viewModeButtonActive]}>
             <Ionicons name="stats-chart-outline" size={15} color={visualizacaoSessoes === 'graficos' ? '#fff' : colors.primary} />
             <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'graficos' && styles.viewModeButtonTextActive]}>Gráficos</Text>
           </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'sessoes' }} onPress={() => setVisualizacaoSessoes('sessoes')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'sessoes' && styles.viewModeButtonActive]}>
+            <Ionicons name="albums-outline" size={15} color={visualizacaoSessoes === 'sessoes' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'sessoes' && styles.viewModeButtonTextActive]}>Sessões</Text>
+          </TouchableOpacity>
         </View>
 
-        {visualizacaoSessoes !== 'graficos' && <View style={styles.kpiRow}>
+        {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && <View style={styles.kpiRow}>
           <View style={[styles.kpiCard, { borderLeftColor: '#0284C7' }]}>
             <Text style={styles.kpiLabel}>Buy-ins</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.kpiValue, { color: '#0369A1' }]}>{formatValorKpi(totalSacadoGeral)}</Text>
@@ -969,7 +972,14 @@ export function PokerScreen() {
           </View>}
         </View>}
 
+        {visualizacaoSessoes === 'sessoes' && <View style={[styles.graphCard, { alignItems: 'center', paddingVertical: 34, gap: 9 }]}>
+          <Ionicons name="construct-outline" size={30} color={colors.primary} />
+          <Text style={styles.graphTitle}>Sessões em construção</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center' }}>Esta área estará disponível em breve.</Text>
+        </View>}
+
         {/* Filtro por ano e mês base */}
+        {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && <>
         <View style={styles.filtrosRow}>
           <Text style={styles.inputLabel}>Mês base</Text>
           <TouchableOpacity style={styles.filterMonthButton} onPress={() => setFiltroMesAberto((aberto) => !aberto)}>
@@ -982,12 +992,13 @@ export function PokerScreen() {
             {opcoesFiltroMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setMesFiltro(opcao.valor); setFiltroMesAberto(false) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}
           </ScrollView>}
         </View>
+        </>}
 
 
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
         {/* ======================================================== */}
-        {visualizacaoSessoes !== 'graficos' && sessoesAgrupadas.map((sessao) => {
+        {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && sessoesAgrupadas.map((sessao) => {
           const { data: dataSessao, mesBase: mesBaseSessao, itens } = sessao
           const buyInSessao = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0)
           const taxaSessao = itens.reduce((s, it) => s + (Number(it.taxa) || 0), 0)
@@ -1563,6 +1574,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface
   },
+  viewModeTabButton: {
+    width: 77
+  },
   viewModeButtonActive: {
     borderColor: colors.primary,
     backgroundColor: colors.primary
@@ -1575,11 +1589,6 @@ const styles = StyleSheet.create({
   viewModeButtonTextActive: {
     color: '#fff'
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7
-  },
   title: {
     fontSize: 22,
     fontWeight: '800',
@@ -1589,20 +1598,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted,
     marginTop: 2
-  },
-  btnNovoTopo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4
-  },
-  btnNovoTopoTexto: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 12
   },
   kpiRow: {
     flexDirection: 'row',

@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { ActivityIndicator, PanResponder, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native'
 import { useMemo } from 'react'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -65,7 +65,9 @@ export function TabNavigator() {
 function TabNavigatorContent() {
   const insets = useSafeAreaInsets()
   const { acesso, carregado } = useModuleAccess()
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'web' ? 10 : 8)
+  // Use only the real safe-area inset. Adding a minimum on web created an
+  // extra strip below the tab bar, making its bottom edge look clipped.
+  const bottomInset = insets.bottom
   if (!carregado) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator color={colors.primary} /></View>
   const primeiraTelaAtiva = acesso.todo ? 'TodoTab' : acesso.agenda ? 'AgendaTab' : acesso.financeiro ? 'FinanceiroTab' : 'ConfiguracoesTab'
   const listeners = (modulo: ModuleKey) => ({ tabPress: (event: { preventDefault: () => void }) => {
@@ -78,16 +80,30 @@ function TabNavigatorContent() {
     <Tab.Navigator initialRouteName={primeiraTelaAtiva} screenOptions={{
       headerShown: false,
       tabBarActiveTintColor: colors.primary,
-      tabBarInactiveTintColor: colors.muted,
+      tabBarInactiveTintColor: colors.textSecondary,
+      tabBarActiveBackgroundColor: colors.borderFocus,
       tabBarStyle: {
-        backgroundColor: colors.surface,
-        borderTopColor: colors.border,
+        position: 'absolute',
+        left: 24,
+        right: 24,
+        bottom: bottomInset + 8,
+        height: 62,
+        paddingTop: 4,
+        paddingBottom: 4,
+        paddingHorizontal: 4,
+        backgroundColor: '#E8F0E9',
+        borderWidth: 1,
+        borderColor: '#C5D5C8',
         borderTopWidth: 1,
-        height: 54 + bottomInset,
-        paddingBottom: bottomInset,
-        paddingTop: 6
+        borderRadius: 32,
+        elevation: 8,
+        shadowColor: '#52615A',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.14,
+        shadowRadius: 6
       },
-      tabBarLabelStyle: { fontSize: 11, fontWeight: '600' }
+      tabBarItemStyle: { marginHorizontal: 2, borderRadius: 25, overflow: 'hidden' },
+      tabBarLabelStyle: { fontSize: 9, fontWeight: '600' }
     }}>
       <Tab.Screen name="TodoTab" component={SwipeTodo} listeners={listeners('todo')} options={{ tabBarLabel: 'Todo List', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={size} color={acesso.todo ? color : '#94A3B8'} />{!acesso.todo && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
       <Tab.Screen name="AgendaTab" component={SwipeAgenda} listeners={listeners('agenda')} options={{ tabBarLabel: 'Agenda', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={acesso.agenda ? color : '#94A3B8'} />{!acesso.agenda && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
@@ -107,14 +123,14 @@ const FinanceStack = createNativeStackNavigator<FinanceParamList>()
 
 function FinanceiroNavigator() {
   return <FinanceStack.Navigator initialRouteName="HomeTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
-    ['CartoesTab', 'Cartões'],
     ['PokerTab', 'Poker'],
-    ['HomeTab', 'Resumo'],
-    ['TransacoesTab', 'Transações']
+    ['CartoesTab', 'Cartões'],
+    ['TransacoesTab', 'Transações'],
+    ['HomeTab', 'Resumo']
   ] as const).map(([name, label]) => <TouchableOpacity key={name} onPress={() => navigation.navigate(name)} style={{ paddingHorizontal: 12, paddingVertical: 13, borderBottomWidth: route.name === name ? 2 : 0, borderBottomColor: colors.primary }}><Text style={{ color: route.name === name ? colors.primary : colors.muted, fontSize: 12, fontWeight: '700' }}>{label}</Text></TouchableOpacity>)}</ScrollView></View> }}>
-    <FinanceStack.Screen name="CartoesTab" component={CartoesControleScreen} />
     <FinanceStack.Screen name="PokerTab" component={PokerScreen} />
-    <FinanceStack.Screen name="HomeTab" component={HomeScreen} />
+    <FinanceStack.Screen name="CartoesTab" component={CartoesControleScreen} />
     <FinanceStack.Screen name="TransacoesTab" component={TransacoesScreen} />
+    <FinanceStack.Screen name="HomeTab" component={HomeScreen} />
   </FinanceStack.Navigator>
 }
