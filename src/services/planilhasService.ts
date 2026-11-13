@@ -65,7 +65,7 @@ export type CashoutPorLocal = Record<string, number>
 export type CashoutsPokerMap = Record<string, CashoutPorLocal>
 export type SessaoPoker = { id: string; mes_base: string; data_cartao: string; locais: string[]; criado_em?: string }
 export type FotoPoker = { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string; url: string }
-export type LocalPokerConfig = { nome: string; cor: string; storage_path?: string; aliases?: string[]; fotoUrl?: string }
+export type LocalPokerConfig = { nome: string; cor: string; storage_path?: string; aliases?: string[]; fotoUrl?: string; aplica_taxa?: boolean; ordem_exibicao?: number }
 
 export const CASHOUTS_INICIAIS: CashoutsPokerMap = {
   '31/out': {
@@ -940,9 +940,10 @@ export function carregarConfiguracoesLocaisPoker(): LocalPokerConfig[] {
   const resultado = [...salvas]
   locais.forEach((nome) => {
     const existe = resultado.some((item) => item.nome.toLowerCase() === nome.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))
-    if (!existe) resultado.push({ nome, cor: coresPadraoLocaisPoker[nome.toLowerCase()] || '#475569' })
+    if (!existe) resultado.push({ nome, cor: coresPadraoLocaisPoker[nome.toLowerCase()] || '#475569', aplica_taxa: true })
   })
-  return resultado
+  return resultado.map((config, indice) => ({ aplica_taxa: true, ordem_exibicao: indice, ...config }))
+    .sort((a, b) => (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0))
 }
 
 export async function sincronizarConfiguracoesLocaisPoker(): Promise<LocalPokerConfig[]> {
@@ -963,12 +964,13 @@ export async function sincronizarConfiguracoesLocaisPoker(): Promise<LocalPokerC
 }
 
 export async function salvarConfiguracoesLocaisPoker(configs: LocalPokerConfig[]): Promise<void> {
-  setLocalItem(STORAGE_KEYS.LOCAIS_CONFIG, configs.map(({ fotoUrl: _fotoUrl, ...config }) => config))
-  salvarLocaisPoker(configs.map((config) => config.nome))
+  const ordenadas = configs.map((config, indice) => ({ ...config, aplica_taxa: config.aplica_taxa ?? true, ordem_exibicao: indice }))
+  setLocalItem(STORAGE_KEYS.LOCAIS_CONFIG, ordenadas.map(({ fotoUrl: _fotoUrl, ...config }) => config))
+  salvarLocaisPoker(ordenadas.map((config) => config.nome))
   const { data } = await supabase.auth.getUser()
   if (!data.user) return
   const { error } = await supabase.auth.updateUser({
-    data: { ...data.user.user_metadata, poker_locais_config: configs.map(({ fotoUrl: _fotoUrl, ...config }) => config) }
+    data: { ...data.user.user_metadata, poker_locais_config: ordenadas.map(({ fotoUrl: _fotoUrl, ...config }) => config) }
   })
   if (error) throw error
 }

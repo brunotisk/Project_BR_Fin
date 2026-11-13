@@ -121,12 +121,12 @@ export type Database = {
       }
       transacoes: {
         Row: {
-          id: string; usuario_id: string; conta_id: string; cartao_id: string | null; categoria_id: string | null; tipo: string
+          id: string; usuario_id: string; conta_id: string | null; cartao_id: string | null; categoria_id: string | null; tipo: string
           descricao: string; valor: number; data: string; observacao: string | null; status: string
           criado_em: string; atualizado_em: string
         }
         Insert: {
-          id?: string; usuario_id?: string; conta_id: string; cartao_id?: string | null; categoria_id?: string | null; tipo: string
+          id?: string; usuario_id?: string; conta_id?: string | null; cartao_id?: string | null; categoria_id?: string | null; tipo: string
           descricao: string; valor: number; data?: string; observacao?: string | null; status?: string
           criado_em?: string; atualizado_em?: string
         }
@@ -214,6 +214,19 @@ export type Database = {
           p_tipo?: string
           p_data?: string | null
           p_observacao?: string | null
+        }
+        Returns: string
+      }
+      criar_transacao_parcelada_cartao: {
+        Args: {
+          p_cartao_id: string
+          p_categoria_id: string | null
+          p_descricao: string
+          p_valor_total: number
+          p_total_parcelas: number
+          p_primeiro_vencimento: string
+          p_data: string | null
+          p_observacao: string | null
         }
         Returns: string
       }

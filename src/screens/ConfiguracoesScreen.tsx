@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Image, Modal, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
-import { Ionicons } from '@expo/vector-icons'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/AuthProvider'
 import { colors } from '../theme'
@@ -130,9 +130,23 @@ export function ConfiguracoesScreen() {
     } else {
       if (locaisPoker.some((item) => item.toLowerCase() === valor.toLowerCase())) { notify('Local já cadastrado', 'Use outro nome ou selecione o local existente.'); return }
       const atualizados = [...locaisPoker, valor]
-      const configs = [...configuracoesLocais, { nome: valor, cor: '#475569' }]
+      const configs = [...configuracoesLocais, { nome: valor, cor: '#475569', aplica_taxa: true, ordem_exibicao: configuracoesLocais.length }]
       setLocaisPoker(atualizados); setConfiguracoesLocais(configs); salvarLocaisPoker(atualizados); void salvarConfiguracoesLocaisPoker(configs).catch((erro) => notify('Não foi possível sincronizar os locais', erro?.message || 'Tente novamente.')); setNovoLocalPoker('')
     }
+  }
+
+  function moverLocal(nome: string, direcao: -1 | 1) {
+    const ordenados = [...configuracoesLocais].sort((a, b) => (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0))
+    const indice = ordenados.findIndex((item) => item.nome === nome)
+    const destino = indice + direcao
+    if (indice < 0 || destino < 0 || destino >= ordenados.length) return
+    const itemAtual = ordenados[indice]
+    ordenados[indice] = ordenados[destino]
+    ordenados[destino] = itemAtual
+    const configs = ordenados.map((item, ordem_exibicao) => ({ ...item, ordem_exibicao }))
+    setConfiguracoesLocais(configs)
+    setLocaisPoker(configs.map((item) => item.nome))
+    void salvarConfiguracoesLocaisPoker(configs).catch((erro) => notify('Não foi possível salvar a ordem', erro?.message || 'Tente novamente.'))
   }
 
   function removerOpcaoPoker(tipo: 'cartao' | 'local', nome: string) {
@@ -215,7 +229,7 @@ export function ConfiguracoesScreen() {
       <Text style={styles.title}>Configurações</Text>
       <Text style={styles.subtitle}>Preferências, compartilhamento e dados do aplicativo.</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
-        {([['home', 'Home', 'home-outline'], ['agenda', 'Agenda', 'calendar-outline'], ['poker', 'Poker', 'trophy-outline'], ['financeiro', 'Financeiro', 'wallet-outline'], ['admin', 'Admin', 'settings-outline']] as [CategoriaConfiguracao, string, keyof typeof Ionicons.glyphMap][]).map(([id, label, icon]) => <TouchableOpacity key={id} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: categoria === id }} onPress={() => setCategoria(id)} style={[styles.categoryTab, categoria === id && styles.categoryTabActive]}><Ionicons name={icon} size={16} color={categoria === id ? '#fff' : colors.muted} />{categoria === id && <Text style={[styles.categoryTabText, styles.categoryTabTextActive]}>{label}</Text>}</TouchableOpacity>)}
+        {([['home', 'Home', 'home-outline'], ['agenda', 'Agenda', 'calendar-outline'], ['poker', 'Poker', 'cards-spade'], ['financeiro', 'Financeiro', 'wallet-outline'], ['admin', 'Admin', 'settings-outline']] as [CategoriaConfiguracao, string, string][]).map(([id, label, icon]) => <TouchableOpacity key={id} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: categoria === id }} onPress={() => setCategoria(id)} style={[styles.categoryTab, categoria === id && styles.categoryTabActive]}>{id === 'poker' ? <MaterialCommunityIcons name="cards-spade" size={16} color={categoria === id ? '#fff' : colors.muted} /> : <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={16} color={categoria === id ? '#fff' : colors.muted} />}{categoria === id && <Text style={[styles.categoryTabText, styles.categoryTabTextActive]}>{label}</Text>}</TouchableOpacity>)}
       </ScrollView>
     </View>
 
@@ -269,11 +283,15 @@ export function ConfiguracoesScreen() {
           <View style={styles.addPokerRow}><TextInput value={novoCartaoPoker} onChangeText={setNovoCartaoPoker} placeholder="Nome do cartão" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} onSubmitEditing={() => adicionarOpcaoPoker('cartao')} /><TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar cartão" style={styles.addPokerButton} onPress={() => adicionarOpcaoPoker('cartao')}><Ionicons name="add" size={20} color="#fff" /></TouchableOpacity></View>
         </View>
         <View style={styles.card}><View style={styles.heading}><View style={[styles.icon, { backgroundColor: '#F3E8FF' }]}><Ionicons name="location-outline" size={20} color="#77158D" /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Locais</Text><Text style={styles.itemSub}>Clubes e locais das sessões</Text></View></View>
-          <View style={styles.venueList}>{locaisPoker.map((nome) => {
+          <View style={styles.venueList}>{locaisPoker.map((nome, indice) => {
             const config = configuracoesLocais.find((item) => item.nome.toLowerCase() === nome.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))
             return <View key={nome} style={styles.venueRow}>
               {config?.fotoUrl ? <Image source={{ uri: config.fotoUrl }} style={styles.venueThumb} resizeMode="cover" /> : <View style={[styles.venueThumb, { backgroundColor: config?.cor || '#475569' }]}><Ionicons name="location" size={19} color="#fff" /></View>}
-              <View style={styles.venueInfo}><Text numberOfLines={1} style={styles.itemTitle}>{nome}</Text><View style={styles.venueColorLine}><View style={[styles.venueColorSwatch, { backgroundColor: config?.cor || '#475569' }]} /><Text style={styles.itemSub}>{config?.cor || '#475569'}</Text></View></View>
+              <View style={styles.venueInfo}><Text numberOfLines={1} style={styles.itemTitle}>{nome}</Text><View style={styles.venueColorLine}><View style={[styles.venueColorSwatch, { backgroundColor: config?.cor || '#475569' }]} /><Text style={styles.itemSub}>{config?.aplica_taxa === false ? 'Sem taxa' : 'Taxa ativa'}</Text><Text style={styles.venueOrder}>#{(config?.ordem_exibicao ?? configuracoesLocais.indexOf(config!)) + 1}</Text></View></View>
+              <View style={styles.orderButtons}>
+                <TouchableOpacity accessibilityLabel={`Mover ${nome} para cima`} disabled={indice === 0} onPress={() => moverLocal(nome, -1)} style={styles.orderButton}><Ionicons name="chevron-up" size={16} color={indice === 0 ? colors.border : colors.muted} /></TouchableOpacity>
+                <TouchableOpacity accessibilityLabel={`Mover ${nome} para baixo`} disabled={indice === locaisPoker.length - 1} onPress={() => moverLocal(nome, 1)} style={styles.orderButton}><Ionicons name="chevron-down" size={16} color={indice === locaisPoker.length - 1 ? colors.border : colors.muted} /></TouchableOpacity>
+              </View>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Editar local ${nome}`} style={styles.venueEditButton} onPress={() => { setLocalEditando({ nome, cor: config?.cor || '#475569', storage_path: config?.storage_path, aliases: config?.aliases }); setNomeLocalOriginal(nome); setFotoLocalSelecionada(null) }}><Ionicons name="create-outline" size={18} color={colors.primary} /></TouchableOpacity>
               <TouchableOpacity accessibilityLabel={`Remover local ${nome}`} onPress={() => removerOpcaoPoker('local', nome)}><Ionicons name="close-circle" size={18} color={colors.muted} /></TouchableOpacity>
             </View>
@@ -316,6 +334,7 @@ export function ConfiguracoesScreen() {
           <TextInput value={localEditando?.nome || ''} onChangeText={(nome) => setLocalEditando((atual) => atual ? { ...atual, nome } : atual)} placeholder="Nome do local" placeholderTextColor={colors.muted} style={styles.input} />
           <Text style={styles.editLabel}>Cor da barra · HEX</Text>
           <View style={styles.colorEditRow}><View style={[styles.venueColorSwatch, { backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(localEditando?.cor || '') ? localEditando!.cor : '#CBD5E1' }]} /><TextInput autoCapitalize="characters" value={localEditando?.cor || ''} onChangeText={(corHex) => setLocalEditando((atual) => atual ? { ...atual, cor: corHex } : atual)} placeholder="#77158D" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} /></View>
+          <View style={styles.venueTaxRow}><View style={{ flex: 1 }}><Text style={styles.editLabel}>Aplicar taxa automaticamente</Text><Text style={styles.itemSub}>{localEditando?.aplica_taxa === false ? 'Novos lançamentos começam sem taxa.' : 'Novos lançamentos começam com taxa ativa.'}</Text></View><Switch value={localEditando?.aplica_taxa ?? true} onValueChange={(aplica_taxa) => setLocalEditando((atual) => atual ? { ...atual, aplica_taxa } : atual)} trackColor={{ false: '#CBD5E1', true: colors.primary }} thumbColor="#fff" /></View>
           <Text style={styles.editLabel}>Foto do local</Text>
           <TouchableOpacity accessibilityRole="button" style={styles.photoPickButton} onPress={() => void selecionarFotoLocal()}>
             {fotoLocalSelecionada ? <Image source={{ uri: fotoLocalSelecionada.uri }} style={styles.photoPreview} resizeMode="cover" /> : localEditando?.fotoUrl ? <Image source={{ uri: localEditando.fotoUrl }} style={styles.photoPreview} resizeMode="cover" /> : <Ionicons name="image-outline" size={23} color={colors.primary} />}
@@ -343,6 +362,6 @@ const styles = StyleSheet.create({
   versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.borderFocus },
   versionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary }
   ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surfaceHover, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, pokerPercent: { color: colors.textSecondary, fontSize: 15, fontWeight: '800', marginHorizontal: 4 }, negativeFormatOptions: { gap: 8 }, negativeFormatOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }, negativeFormatOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, negativeFormatText: { color: colors.text, fontSize: 13, fontWeight: '700' }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  venueList: { gap: 9 }, venueRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 9, backgroundColor: colors.surface }, venueThumb: { width: 44, height: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHover }, venueInfo: { flex: 1, gap: 4 }, venueColorLine: { flexDirection: 'row', alignItems: 'center', gap: 6 }, venueColorSwatch: { width: 16, height: 16, borderRadius: 5, borderWidth: 1, borderColor: colors.border }, venueEditButton: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight },
+  venueList: { gap: 9 }, venueRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 9, backgroundColor: colors.surface }, venueThumb: { width: 44, height: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHover }, venueInfo: { flex: 1, gap: 4 }, venueColorLine: { flexDirection: 'row', alignItems: 'center', gap: 6 }, venueColorSwatch: { width: 16, height: 16, borderRadius: 5, borderWidth: 1, borderColor: colors.border }, venueOrder: { color: colors.muted, fontSize: 10, fontWeight: '700' }, orderButtons: { alignItems: 'center', justifyContent: 'center' }, orderButton: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center' }, venueTaxRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 }, venueEditButton: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight },
   editModalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.48)', justifyContent: 'center', padding: 20 }, editModalCard: { backgroundColor: colors.surface, borderRadius: 18, padding: 18, gap: 9, borderWidth: 1, borderColor: colors.border }, editModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }, editLabel: { color: colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 }, colorEditRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, photoPickButton: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: colors.surfaceHover }, photoPreview: { width: 40, height: 40, borderRadius: 8 }, photoPickText: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '600' }, photoHint: { color: colors.muted, fontSize: 11, lineHeight: 16 }, editModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 9, marginTop: 8 }, cancelEditButton: { minHeight: 42, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHover }, cancelEditText: { color: colors.text, fontWeight: '700' }, saveEditButton: { minHeight: 42, paddingHorizontal: 16, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary }, saveEditText: { color: '#fff', fontWeight: '800' }
 })

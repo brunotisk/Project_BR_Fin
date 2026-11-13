@@ -45,6 +45,7 @@ import {
   definirDiaPokerBloqueado,
   gerarUuidPoker,
   salvarCashoutsDaSessao,
+  salvarConfiguracoesLocaisPoker,
   excluirLocalSessaoPoker as excluirLocalSessaoPokerService,
   excluirSessaoPoker as excluirSessaoPokerService,
   salvarLancamentoPoker,
@@ -154,6 +155,15 @@ function formatarDataPokerCurta(data: string | null | undefined, mesBase?: strin
 
 function nomeLocalCanonico(nome: string, configuracoes: LocalPokerConfig[]) {
   return configuracoes.find((config) => config.nome.toLowerCase() === nome.toLowerCase() || config.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))?.nome || nome
+}
+
+function ordenarLocaisPorCadastro(nomes: string[], configuracoes: LocalPokerConfig[]) {
+  const unicos = Array.from(new Set(nomes.filter(Boolean)))
+  return unicos.sort((a, b) => {
+    const configA = configuracoes.find((config) => config.nome.toLowerCase() === a.toLowerCase())
+    const configB = configuracoes.find((config) => config.nome.toLowerCase() === b.toLowerCase())
+    return (configA?.ordem_exibicao ?? Number.MAX_SAFE_INTEGER) - (configB?.ordem_exibicao ?? Number.MAX_SAFE_INTEGER)
+  })
 }
 
 function mesBaseHojeKey() {
@@ -287,8 +297,9 @@ export function PokerScreen() {
       setDiasBloqueados(await carregarDiasPokerBloqueados())
       setTaxaPadraoPercentual(carregarTaxaPadraoPoker())
       setFormatoNegativoPoker(carregarFormatoNegativoPoker())
-      setLocaisCadastrados(carregarLocaisPoker())
-      try { setConfiguracoesLocais(await sincronizarConfiguracoesLocaisPoker()) } catch { setConfiguracoesLocais(carregarConfiguracoesLocaisPoker()) }
+      const configuracoesSincronizadas = await sincronizarConfiguracoesLocaisPoker().catch(() => carregarConfiguracoesLocaisPoker())
+      setConfiguracoesLocais(configuracoesSincronizadas)
+      setLocaisCadastrados(ordenarLocaisPorCadastro(carregarLocaisPoker(), configuracoesSincronizadas))
       setCartoesCadastrados(carregarCartoesPoker())
       const { data: cartoesCreditoSalvos, error: erroCartoesCredito } = await supabase
         .from('cartoes_credito')
@@ -440,7 +451,10 @@ export function PokerScreen() {
         porLocal.set(nome, atual)
       })
     })
-    return Array.from(porLocal.entries()).map(([local, dados]) => ({ local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas })).sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    return ordenarLocaisPorCadastro(Array.from(porLocal.keys()), configuracoesLocais).map((local) => {
+      const dados = porLocal.get(local) || { buyIn: 0, taxas: 0, cashout: 0 }
+      return { local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas }
+    })
   }, [sessoesAgrupadas, cashouts, configuracoesLocais])
   const maiorResultadoGraficos = Math.max(1, ...dadosGraficosSessoes.map((sessao) => Math.abs(sessao.net)))
   const maiorResultadoLocalGraficos = Math.max(1, ...dadosGraficosLocais.map((local) => Math.abs(local.net)))
@@ -457,7 +471,7 @@ export function PokerScreen() {
     const inputsIniciais: Record<string, string> = {}
 
     const locaisOriginais = [...itensDaSessao.map((it) => it.local).filter(Boolean), ...locaisCadastrados, ...Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas')]
-    const locaisDaSessao = Array.from(new Set(locaisOriginais.map((nome) => nomeLocalCanonico(nome, configuracoesLocais))))
+    const locaisDaSessao = ordenarLocaisPorCadastro(locaisOriginais.map((nome) => nomeLocalCanonico(nome, configuracoesLocais)), configuracoesLocais)
     locaisDaSessao.forEach((loc) => {
       const nomesEquivalentes = Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas' && nomeLocalCanonico(nome, configuracoesLocais) === loc)
       const v = nomesEquivalentes.reduce((total, nome) => total + (Number(valoresSalvos[nome]) || 0), 0)
@@ -587,6 +601,11 @@ export function PokerScreen() {
         const novosLocais = [...locaisCadastrados, novo]
         setLocaisCadastrados(novosLocais)
         salvarLocaisPoker(novosLocais)
+        if (!configuracoesLocais.some((config) => config.nome.toLowerCase() === novo.toLowerCase())) {
+          const novasConfiguracoes = [...configuracoesLocais, { nome: novo, cor: '#475569', aplica_taxa: true, ordem_exibicao: configuracoesLocais.length }]
+          setConfiguracoesLocais(novasConfiguracoes)
+          void salvarConfiguracoesLocaisPoker(novasConfiguracoes)
+        }
       }
     }
 
@@ -596,7 +615,7 @@ export function PokerScreen() {
   // ==========================================
   // HANDLERS ENTRADAS (BUY-IN)
   // ==========================================
-  const abrirModalNovo = (dataSessaoSugerida?: string, mesBaseSugerido?: string) => {
+  const abrirModalNovo = (dataSessaoSugerida?: string, mesBaseSugerido?: string, localSugerido?: string) => {
     setItemEditando(null)
     setFormDropdownAberto(null)
     const baseInicial = mesBaseSugerido ? normalizarMesBase(mesBaseSugerido) || mesBaseHojeKey() : mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro
@@ -606,10 +625,12 @@ export function PokerScreen() {
     setMesCalendario(chaveMesDaDataCartao(dataInicial, baseInicial))
     setCalendarioAberto(false)
     setFormCartao('')
-    setFormLocal('MonteCarlo')
-    setAlvoLancamento(dataSessaoSugerida ? { mesBase: baseInicial, dataCartao: dataInicial, local: 'MonteCarlo' } : null)
+    const localInicial = localSugerido || locaisCadastrados[0] || 'MonteCarlo'
+    const configLocalInicial = configuracoesLocais.find((config) => config.nome.toLowerCase() === localInicial.toLowerCase())
+    setFormLocal(localInicial)
+    setAlvoLancamento(dataSessaoSugerida ? { mesBase: baseInicial, dataCartao: dataInicial, local: localInicial } : null)
     setFormValor('')
-    setAplicarTaxa(true)
+    setAplicarTaxa(configLocalInicial?.aplica_taxa ?? true)
     setFormTaxa('')
     setModalNovoVisible(true)
   }
@@ -740,6 +761,15 @@ export function PokerScreen() {
     } else {
       setFormTaxa('0,00')
     }
+  }
+
+  const selecionarLocalNovaEntrada = (local: string) => {
+    setFormLocal(local)
+    const config = configuracoesLocais.find((item) => item.nome.toLowerCase() === local.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === local.toLowerCase()))
+    const aplica = config?.aplica_taxa ?? true
+    setAplicarTaxa(aplica)
+    const valor = parseFloat(formValor.replace(',', '.')) || 0
+    setFormTaxa(aplica && valor > 0 ? (Math.round(valor * (taxaPadraoPercentual / 100) * 100) / 100).toFixed(2).replace('.', ',') : '0,00')
   }
 
   const salvarEntrada = async () => {
@@ -876,6 +906,7 @@ export function PokerScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleGroup}>
             <Text style={styles.title}>Poker</Text>
+            <Text style={styles.subtitle}>Controle de resultados e sessões</Text>
           </View>
           {visualizacaoSessoes === 'detalhado' && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar lançamentos" onPress={abrirNovaSessao} style={styles.viewModeButton}>
             <Ionicons name="add-circle-outline" size={15} color={colors.primary} />
@@ -962,6 +993,14 @@ export function PokerScreen() {
               </View>
             })}
           </View>
+          {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
+            <Text style={styles.graphTitle}>Resultado por clube</Text>
+            {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+              <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
+              <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
+              <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
+            </View>)}
+          </View>}
           <View style={styles.graphCard}>
             <Text style={styles.graphTitle}>Resultado por sessão</Text>
             <View style={styles.graphSortControls}>
@@ -976,14 +1015,6 @@ export function PokerScreen() {
               <Text style={[styles.graphResultValue, { color: sessao.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(sessao.net, formatoNegativoPoker)}</Text>
             </View>)}
           </View>
-          {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
-            <Text style={styles.graphTitle}>Resultado por clube</Text>
-            {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
-              <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
-              <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
-              <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
-            </View>)}
-          </View>}
         </View>}
 
         {visualizacaoSessoes === 'sessoes' && <View style={[styles.graphCard, { alignItems: 'center', paddingVertical: 34, gap: 9 }]}>
@@ -1020,7 +1051,7 @@ export function PokerScreen() {
           const cashoutTotalSessao = obterTotalCashoutSessao(cashoutsDoDia)
           const netSessao = cashoutTotalSessao - buyInSessao - taxaSessao
           const chavesCashoutLocais = Object.keys(cashoutsDoDia).filter((nome) => nome !== 'Total' && nome !== '__formas')
-          const locaisCashout = Array.from(new Set([...sessao.locais, ...chavesCashoutLocais].map((nome) => nomeLocalCanonico(nome, configuracoesLocais))))
+          const locaisCashout = ordenarLocaisPorCadastro([...sessao.locais, ...chavesCashoutLocais].map((nome) => nomeLocalCanonico(nome, configuracoesLocais)), configuracoesLocais)
           const detalhesLocais = locaisCashout
             .map((local) => ({ local, valor: chavesCashoutLocais.filter((nome) => nomeLocalCanonico(nome, configuracoesLocais) === local).reduce((total, nome) => total + (Number(cashoutsDoDia[nome]) || 0), 0) }))
             .filter(({ valor }) => valor > 0)
@@ -1030,7 +1061,7 @@ export function PokerScreen() {
           const corNetSessao = netSessao >= 0 ? '#15803D' : '#DC2626'
           const locaisPresentes = new Set(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)))
           const locaisDisponiveis = locaisCadastrados.filter((local) => !locaisPresentes.has(nomeLocalCanonico(local, configuracoesLocais)))
-          const locaisSessaoVisiveis = Array.from(new Set(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais))))
+          const locaisSessaoVisiveis = ordenarLocaisPorCadastro(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)), configuracoesLocais)
 
           return (
             <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
@@ -1042,7 +1073,7 @@ export function PokerScreen() {
                     {itens.length} {itens.length === 1 ? 'lançamento' : 'lançamentos'}
                   </Text>
                 </View>
-                {diaTravado && <View style={resumoFechado ? styles.netSessaoHeaderCenter : undefined}><View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada, resumoFechado && styles.netSessaoHeaderResumo, detalhadoFechado && styles.netSessaoHeaderDetalhadoFechado]}>
+                {diaTravado && <View style={resumoFechado || detalhadoFechado ? styles.netSessaoHeaderCenter : undefined}><View style={[styles.netSessaoHeader, styles.netSessaoHeaderFechada, resumoFechado && styles.netSessaoHeaderResumo, detalhadoFechado && styles.netSessaoHeaderDetalhadoFechado]}>
                     <Text style={styles.netSessaoHeaderLabel}>Resultado:</Text>
                   <View style={styles.netSessaoHeaderValueRow}>
                     <Ionicons name={netSessao >= 0 ? 'trending-up' : 'trending-down'} size={14} color={corNetSessao} />
@@ -1133,7 +1164,7 @@ export function PokerScreen() {
                       </View>}
                     </View>
                     {!diaTravado && visualizacaoSessoes === 'detalhado' && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
-                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => { abrirModalNovo(dataSessao, mesBaseSessao); setFormLocal(local); setAlvoLancamento({ mesBase: mesBaseSessao, dataCartao: dataSessao, local }) }}>
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => abrirModalNovo(dataSessao, mesBaseSessao, local)}>
                         <Ionicons name="add" size={23} color={corDoLocal} />
                       </TouchableOpacity>
                       <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })}>
@@ -1473,7 +1504,7 @@ export function PokerScreen() {
                     <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do clube" value={formLocal} onChangeText={setFormLocal} />
                     <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher clube cadastrado" onPress={() => abrirDropdownFormulario('local')}><Ionicons name={formDropdownAberto === 'local' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
                   </View>
-                  {formDropdownAberto === 'local' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{locaisCadastrados.map((op) => <TouchableOpacity key={op} style={styles.formDropdownOption} onPress={() => { setFormLocal(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op}</Text></TouchableOpacity>)}</ScrollView>}
+                  {formDropdownAberto === 'local' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{locaisCadastrados.map((op) => <TouchableOpacity key={op} style={styles.formDropdownOption} onPress={() => { selecionarLocalNovaEntrada(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op}</Text></TouchableOpacity>)}</ScrollView>}
                 </View>}
               </View>
 
@@ -1601,9 +1632,9 @@ const styles = StyleSheet.create({
     marginBottom: 14
   },
   headerTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 0
   },
   viewModeSwitch: {
     flexDirection: 'row',
@@ -1877,8 +1908,9 @@ const styles = StyleSheet.create({
     gap: 5
   },
   sessaoDiaDetalhadoFechado: {
-    flex: 1,
-    minWidth: 80,
+    width: 108,
+    flexGrow: 0,
+    flexShrink: 0,
     gap: 5
   },
   netSessaoHeaderCenter: {
@@ -1915,8 +1947,8 @@ const styles = StyleSheet.create({
     flexShrink: 1
   },
   netSessaoHeaderDetalhadoFechado: {
-    minWidth: 96,
-    paddingHorizontal: 6
+    minWidth: 108,
+    paddingHorizontal: 8
   },
   netSessaoHeaderAberta: {
     borderColor: '#BBF7D0'

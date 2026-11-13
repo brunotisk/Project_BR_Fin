@@ -4,11 +4,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../services/supabase'
-import { CartaoCredito, Transacao } from '../types'
+import { Transacao } from '../types'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { formatarData } from '../utils/datas'
-import { Button } from '../components/Button'
 
 interface TransacaoComRelacoes extends Transacao {
   contas?: { nome: string; cor: string | null } | null
@@ -39,24 +38,16 @@ export function TransacoesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>()
   const [abaVisualizacao, setAbaVisualizacao] = useState<'lancamentos' | 'analise'>('lancamentos')
   const [transacoes, setTransacoes] = useState<TransacaoComRelacoes[]>([])
-  const [cartoes, setCartoes] = useState<CartaoCredito[]>([])
-  const [cartaoFiltro, setCartaoFiltro] = useState<string>('todos')
-  const [filtroTipo, setFiltroTipo] = useState<'todas' | 'despesa' | 'receita'>('todas')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const carregarTransacoes = useCallback(async () => {
     try {
-      const [resTransacoes, resCartoes] = await Promise.all([
-        supabase
-          .from('transacoes')
-          .select('*, contas (nome, cor), categorias (nome, cor, icone), cartoes_credito (nome, cor)')
-          .order('data', { ascending: false })
-          .order('criado_em', { ascending: false }),
-        supabase.from('cartoes_credito').select('*').order('nome')
-      ])
-
-      if (resCartoes.data) setCartoes(resCartoes.data as CartaoCredito[])
+      const resTransacoes = await supabase
+        .from('transacoes')
+        .select('*, contas (nome, cor), categorias (nome, cor, icone), cartoes_credito (nome, cor)')
+        .order('data', { ascending: false })
+        .order('criado_em', { ascending: false })
       setTransacoes((resTransacoes.data as unknown as TransacaoComRelacoes[]) || [])
     } catch (err) {
       console.error('Erro ao carregar transações:', err)
@@ -72,23 +63,12 @@ export function TransacoesScreen() {
     }, [carregarTransacoes])
   )
 
-  // Filtra por tipo e por cartão
-  const transacoesFiltradas = transacoes.filter((t) => {
-    const matchTipo = filtroTipo === 'todas' || t.tipo === filtroTipo
-    const matchCartao = cartaoFiltro === 'todos' || t.cartao_id === cartaoFiltro
-    return matchTipo && matchCartao
-  })
+  const transacoesFiltradas = transacoes
 
-  // Cálculos financeiros
-  const totalReceitas = transacoesFiltradas
-    .filter((t) => t.tipo === 'receita')
-    .reduce((acc, t) => acc + Number(t.valor), 0)
-
+  // Cálculo de despesas para a análise.
   const totalDespesas = transacoesFiltradas
     .filter((t) => t.tipo === 'despesa')
     .reduce((acc, t) => acc + Number(t.valor), 0)
-
-  const balanco = totalReceitas - totalDespesas
 
   // Cálculo da Análise de Gastos por Categoria
   const despesasParaAnalise = transacoesFiltradas.filter((t) => t.tipo === 'despesa')
@@ -158,10 +138,10 @@ export function TransacoesScreen() {
           <Text style={styles.title}>Transações & Análise</Text>
           <Text style={styles.subtitle}>Histórico e distribuição de gastos</Text>
         </View>
-        <Button
-          title="+ Nova"
-          onPress={() => navigation.navigate('NovaTransacao')}
-        />
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar transação" onPress={() => navigation.navigate('NovaTransacao')} style={styles.addButton}>
+          <Ionicons name="add-circle-outline" size={18} color="#fff" />
+          <Text style={styles.addButtonText}>Nova</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Alternância: Lançamentos vs Análise */}
@@ -187,85 +167,8 @@ export function TransacoesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Filtro por Cartão de Crédito */}
-      {cartoes.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cartoesFiltroScroll}>
-          <TouchableOpacity
-            onPress={() => setCartaoFiltro('todos')}
-            style={[styles.filtroCartaoChip, cartaoFiltro === 'todos' && styles.filtroCartaoChipAtivo]}
-          >
-            <Text style={[styles.filtroCartaoTexto, cartaoFiltro === 'todos' && styles.filtroCartaoTextoAtivo]}>
-              💳 Todos os Cartões
-            </Text>
-          </TouchableOpacity>
-
-          {cartoes.map((c) => {
-            const isSelected = cartaoFiltro === c.id
-            return (
-              <TouchableOpacity
-                key={c.id}
-                onPress={() => setCartaoFiltro(c.id)}
-                style={[
-                  styles.filtroCartaoChip,
-                  isSelected && { borderColor: c.cor, backgroundColor: c.cor + '20' }
-                ]}
-              >
-                <View style={[styles.pontoCor, { backgroundColor: c.cor }]} />
-                <Text style={[styles.filtroCartaoTexto, isSelected && { color: colors.text, fontWeight: '700' }]}>
-                  {c.nome}
-                </Text>
-              </TouchableOpacity>
-            )
-          })}
-        </ScrollView>
-      )}
-
       {abaVisualizacao === 'lancamentos' ? (
         <>
-          {/* Resumo */}
-          <View style={styles.resumoContainer}>
-            <View style={[styles.cardMini, { backgroundColor: colors.incomeLight }]}>
-              <Text style={[styles.cardMiniLabel, { color: colors.income }]}>Entradas</Text>
-              <Text style={[styles.cardMiniValor, { color: colors.income }]}>
-                +{formatCurrency(totalReceitas)}
-              </Text>
-            </View>
-            <View style={[styles.cardMini, { backgroundColor: colors.expenseLight }]}>
-              <Text style={[styles.cardMiniLabel, { color: colors.expense }]}>Saídas</Text>
-              <Text style={[styles.cardMiniValor, { color: colors.expense }]}>
-                -{formatCurrency(totalDespesas)}
-              </Text>
-            </View>
-            <View style={styles.cardMini}>
-              <Text style={styles.cardMiniLabel}>Balanço</Text>
-              <Text style={[styles.cardMiniValor, { color: balanco >= 0 ? colors.income : colors.expense }]}>
-                {formatCurrency(balanco)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Filtros Tipo */}
-          <View style={styles.filtros}>
-            <TouchableOpacity
-              onPress={() => setFiltroTipo('todas')}
-              style={[styles.filtroBtn, filtroTipo === 'todas' && styles.filtroBtnAtivo]}
-            >
-              <Text style={[styles.filtroTexto, filtroTipo === 'todas' && styles.filtroTextoAtivo]}>Todas</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setFiltroTipo('despesa')}
-              style={[styles.filtroBtn, filtroTipo === 'despesa' && styles.filtroBtnAtivo]}
-            >
-              <Text style={[styles.filtroTexto, filtroTipo === 'despesa' && styles.filtroTextoAtivo]}>Despesas</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setFiltroTipo('receita')}
-              style={[styles.filtroBtn, filtroTipo === 'receita' && styles.filtroBtnAtivo]}
-            >
-              <Text style={[styles.filtroTexto, filtroTipo === 'receita' && styles.filtroTextoAtivo]}>Receitas</Text>
-            </TouchableOpacity>
-          </View>
-
           {/* Lista de Transações */}
           <FlatList
             data={transacoesFiltradas}
@@ -320,9 +223,7 @@ export function TransacoesScreen() {
           <View style={styles.analiseTotalCard}>
             <Text style={styles.analiseTotalLabel}>Total em Despesas Analisadas</Text>
             <Text style={styles.analiseTotalValor}>{formatCurrency(totalDespesas)}</Text>
-            <Text style={styles.analiseTotalSub}>
-              {despesasParaAnalise.length} despesas identificadas no filtro atual
-            </Text>
+            <Text style={styles.analiseTotalSub}>{despesasParaAnalise.length} despesas registradas</Text>
           </View>
 
           {/* Distribuição por Categoria */}
@@ -422,6 +323,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted
   },
+  addButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: colors.primary
+  },
+  addButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700'
+  },
   modoTabs: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -450,90 +366,6 @@ const styles = StyleSheet.create({
   },
   modoTextoAtivo: {
     color: colors.primary,
-    fontWeight: '700'
-  },
-  cartoesFiltroScroll: {
-    gap: 8,
-    paddingVertical: 4,
-    marginBottom: 10
-  },
-  filtroCartaoChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
-  },
-  filtroCartaoChipAtivo: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight
-  },
-  filtroCartaoTexto: {
-    fontSize: 12,
-    color: colors.muted,
-    fontWeight: '500'
-  },
-  filtroCartaoTextoAtivo: {
-    color: colors.primary,
-    fontWeight: '700'
-  },
-  pontoCor: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6
-  },
-  resumoContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12
-  },
-  cardMini: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    padding: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  cardMiniLabel: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: colors.muted
-  },
-  cardMiniValor: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-    marginTop: 2
-  },
-  filtros: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12
-  },
-  filtroBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  filtroBtnAtivo: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary
-  },
-  filtroTexto: {
-    fontSize: 13,
-    color: colors.muted,
-    fontWeight: '500'
-  },
-  filtroTextoAtivo: {
-    color: '#fff',
     fontWeight: '700'
   },
   list: {
