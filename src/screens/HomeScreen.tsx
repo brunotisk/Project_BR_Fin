@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/AuthProvider'
-import { CartaoCredito, Conta, Transacao } from '../types'
+import { Conta, Transacao } from '../types'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { formatarData } from '../utils/datas'
@@ -19,35 +19,24 @@ export function HomeScreen() {
   const { session, signOut } = useAuth()
   const navigation = useNavigation<NativeStackNavigationProp<any>>()
   const [contas, setContas] = useState<Conta[]>([])
-  const [cartoes, setCartoes] = useState<CartaoCredito[]>([])
   const [transacoesRecentes, setTransacoesRecentes] = useState<TransacaoComRelacoes[]>([])
   const [totalReceitas, setTotalReceitas] = useState(0)
   const [totalDespesas, setTotalDespesas] = useState(0)
-  const [totalParcelasFuturas, setTotalParcelasFuturas] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
 
   const carregarDashboard = useCallback(async () => {
     try {
-      const hoje = new Date().toISOString().split('T')[0]
-      const [resContas, resCartoes, resTransacoes, resParcelas] = await Promise.all([
+      const [resContas, resTransacoes] = await Promise.all([
         supabase.from('contas').select('*').eq('ativa', true).order('saldo_inicial', { ascending: false }),
-        supabase.from('cartoes_credito').select('*').order('criado_em', { ascending: true }),
         supabase.from('transacoes')
           .select('*, contas (nome, cor), categorias (nome, cor, icone)')
           .order('data', { ascending: false })
           .order('criado_em', { ascending: false })
-          .limit(5),
-        supabase.from('parcelas').select('valor').gte('data_vencimento', hoje)
+          .limit(5)
       ])
 
       if (resContas.data) setContas(resContas.data as Conta[])
-      if (resCartoes.data) setCartoes(resCartoes.data as CartaoCredito[])
       if (resTransacoes.data) setTransacoesRecentes(resTransacoes.data as unknown as TransacaoComRelacoes[])
-
-      if (resParcelas.data) {
-        const somaFutura = resParcelas.data.reduce((acc, p) => acc + Number(p.valor), 0)
-        setTotalParcelasFuturas(somaFutura)
-      }
 
       // Totais gerais
       const { data: todasTransacoes } = await supabase.from('transacoes').select('tipo, valor')
@@ -118,135 +107,7 @@ export function HomeScreen() {
           </View>
         </View>
 
-        {totalParcelasFuturas > 0 && (
-          <TouchableOpacity
-            style={styles.alertaParcelas}
-            onPress={() => navigation.navigate('ProjecaoParcelas')}
-          >
-            <Ionicons name="trending-up" size={16} color={colors.warning} />
-            <Text style={styles.alertaParcelasTexto}>
-              Comprometido em faturas futuras: <Text style={{ fontWeight: '800' }}>{formatCurrency(totalParcelasFuturas)}</Text>
-            </Text>
-          </TouchableOpacity>
-        )}
       </View>
-
-      {/* Destaque: Foco em Cartão de Crédito e Fatura */}
-      <View style={styles.faturaDestaqueCard}>
-        <View style={styles.faturaDestaqueInfo}>
-          <Text style={styles.faturaDestaqueTitulo}>Faturas e Cartões</Text>
-          <Text style={styles.faturaDestaqueSub}>
-            Suba o arquivo OFX/CSV ou cole o extrato para lançar gastos e projetar parcelas
-          </Text>
-        </View>
-        <View style={styles.faturaDestaqueBotoes}>
-          <TouchableOpacity
-            style={[styles.btnDestaque, { backgroundColor: colors.primary }]}
-            onPress={() => navigation.navigate('ImportarFatura')}
-          >
-            <Ionicons name="cloud-upload" size={18} color="#fff" />
-            <Text style={styles.btnDestaqueTexto}>Subir Fatura</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.btnDestaque, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
-            onPress={() => navigation.navigate('ProjecaoParcelas')}
-          >
-            <Ionicons name="calendar-outline" size={18} color={colors.text} />
-            <Text style={[styles.btnDestaqueTexto, { color: colors.text }]}>Ver Projeção</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Meus Cartões de Crédito */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Cartões de Crédito</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('NovoCartao')}>
-          <Text style={styles.verMais}>+ Adicionar Cartão</Text>
-        </TouchableOpacity>
-      </View>
-
-      {cartoes.length === 0 ? (
-        <View style={styles.cardAviso}>
-          <Ionicons name="card-outline" size={32} color={colors.muted} />
-          <Text style={styles.avisoTexto}>Nenhum cartão de crédito cadastrado.</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('NovoCartao')}>
-            <Text style={styles.avisoLink}>+ Cadastrar Cartão</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cartoesScroll}>
-          {cartoes.map((c) => (
-            <TouchableOpacity
-              key={c.id}
-              onPress={() => navigation.navigate('CartoesTab')}
-              style={[styles.cartaoItem, { backgroundColor: c.cor || colors.primary }]}
-            >
-              <View style={styles.cartaoItemTop}>
-                <Text style={styles.cartaoItemBandeira}>{c.bandeira.toUpperCase()}</Text>
-                <Ionicons name="wifi" size={14} color="rgba(255,255,255,0.7)" />
-              </View>
-              <Text style={styles.cartaoItemNome} numberOfLines={1}>{c.nome}</Text>
-              <View style={styles.cartaoItemBottom}>
-                <View>
-                  <Text style={styles.cartaoItemLabel}>LIMITE</Text>
-                  <Text style={styles.cartaoItemValor}>{formatCurrency(Number(c.limite))}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.cartaoItemLabel}>VENCIMENTO</Text>
-                  <Text style={styles.cartaoItemValor}>Dia {c.dia_vencimento}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {/* Ações Rápidas do Sistema */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Mais Ações</Text>
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.acoesScroll}>
-        <TouchableOpacity
-          style={styles.acaoCard}
-          onPress={() => navigation.navigate('NovaTransacao')}
-        >
-          <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-          <Text style={styles.acaoTexto}>+ Lançamento</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.acaoCard}
-          onPress={() => navigation.navigate('NovaConta')}
-        >
-          <Ionicons name="wallet-outline" size={20} color={colors.primary} />
-          <Text style={styles.acaoTexto}>+ Conta</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.acaoCard}
-          onPress={() => navigation.navigate('NovaCategoria')}
-        >
-          <Ionicons name="grid-outline" size={20} color={colors.primary} />
-          <Text style={styles.acaoTexto}>+ Categoria</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.acaoCard}
-          onPress={() => navigation.navigate('NovaMeta')}
-        >
-          <Ionicons name="flag-outline" size={20} color={colors.primary} />
-          <Text style={styles.acaoTexto}>+ Meta</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.acaoCard}
-          onPress={() => navigation.navigate('NovoOrcamento')}
-        >
-          <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
-          <Text style={styles.acaoTexto}>+ Orçamento</Text>
-        </TouchableOpacity>
-      </ScrollView>
 
       {/* Últimas Movimentações */}
       <View style={styles.sectionHeader}>

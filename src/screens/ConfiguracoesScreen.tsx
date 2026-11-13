@@ -290,12 +290,7 @@ export function ConfiguracoesScreen() {
         </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('LimitesCartoes')} style={styles.financeLink}>
           <View style={styles.financeIcon}><Ionicons name="card-outline" size={20} color={colors.primary} /></View>
-          <View style={styles.headingText}><Text style={styles.sectionTitle}>Limite de cartões</Text><Text style={styles.itemSub}>Acompanhe cartões e use o simulador de caixa</Text></View>
-          <Ionicons name="chevron-forward" size={19} color={colors.muted} />
-        </TouchableOpacity>
-        <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('ProjecaoParcelas')} style={styles.financeLink}>
-          <View style={styles.financeIcon}><Ionicons name="trending-up-outline" size={20} color={colors.primary} /></View>
-          <View style={styles.headingText}><Text style={styles.sectionTitle}>Projeção</Text><Text style={styles.itemSub}>Consulte as parcelas previstas para os próximos meses</Text></View>
+          <View style={styles.headingText}><Text style={styles.sectionTitle}>Cadastro Cartões</Text><Text style={styles.itemSub}>Acompanhe cartões e use o simulador de caixa</Text></View>
           <Ionicons name="chevron-forward" size={19} color={colors.muted} />
         </TouchableOpacity>
         <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('Fechamento')} style={styles.financeLink}>

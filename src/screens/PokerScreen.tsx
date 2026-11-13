@@ -16,6 +16,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
+import { supabase } from '../services/supabase'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { notify } from '../utils/notify'
@@ -55,7 +56,7 @@ import {
   FotoPoker
 } from '../services/planilhasService'
 import type { FormatoNegativoPoker, LocalPokerConfig } from '../services/planilhasService'
-import { LancamentoPoker } from '../types'
+import { CartaoCredito, LancamentoPoker } from '../types'
 
 const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -227,6 +228,7 @@ export function PokerScreen() {
   const [fotoExcluirConfirmar, setFotoExcluirConfirmar] = useState<FotoPoker | null>(null)
   const [enviandoFotosLocal, setEnviandoFotosLocal] = useState<string | null>(null)
   const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
+  const [cartoesCredito, setCartoesCredito] = useState<CartaoCredito[]>([])
 
   const [mesFiltro, setMesFiltro] = useState<string>('Todos')
   const [filtroMesAberto, setFiltroMesAberto] = useState(false)
@@ -288,6 +290,16 @@ export function PokerScreen() {
       setLocaisCadastrados(carregarLocaisPoker())
       try { setConfiguracoesLocais(await sincronizarConfiguracoesLocaisPoker()) } catch { setConfiguracoesLocais(carregarConfiguracoesLocaisPoker()) }
       setCartoesCadastrados(carregarCartoesPoker())
+      const { data: cartoesCreditoSalvos, error: erroCartoesCredito } = await supabase
+        .from('cartoes_credito')
+        .select('*')
+        .eq('ativo', true)
+        .order('criado_em', { ascending: true })
+      if (erroCartoesCredito) {
+        console.warn('Não foi possível carregar cartões de crédito para o Poker:', erroCartoesCredito.message)
+      } else {
+        setCartoesCredito((cartoesCreditoSalvos as CartaoCredito[]) || [])
+      }
       setSessoesSalvas(await carregarSessoesPoker())
       setFotosPoker(await carregarFotosPoker())
     } catch (err) {
@@ -513,7 +525,9 @@ export function PokerScreen() {
   // HANDLERS DROPDOWN VERDE
   // ==========================================
   const abrirDropdown = (itemId: string, tipo: 'cartao' | 'local') => {
-    const opcoes = tipo === 'cartao' ? cartoesCadastrados : locaisCadastrados
+    const opcoes = tipo === 'cartao'
+      ? Array.from(new Set([...cartoesCredito.map((cartao) => cartao.nome), ...cartoesCadastrados]))
+      : locaisCadastrados
     setDropdownConfig({ itemId, tipo, opcoes })
     setNovoItemCadastroTexto('')
     setModalDropdownVisible(true)
@@ -1415,7 +1429,42 @@ export function PokerScreen() {
                     <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do cartão" value={formCartao} onChangeText={setFormCartao} />
                     <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher cartão cadastrado" onPress={() => abrirDropdownFormulario('cartao')}><Ionicons name={formDropdownAberto === 'cartao' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
                   </View>
-                  {formDropdownAberto === 'cartao' && <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>{['', ...cartoesCadastrados].map((op) => <TouchableOpacity key={op || 'nenhum'} style={styles.formDropdownOption} onPress={() => { setFormCartao(op); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{op || 'Nenhum cartão'}</Text></TouchableOpacity>)}</ScrollView>}
+                  {formDropdownAberto === 'cartao' && (
+                    <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>
+                      <TouchableOpacity style={styles.formDropdownOption} onPress={() => { setFormCartao(''); setFormDropdownAberto(null) }}>
+                        <Text style={styles.formDropdownOptionText}>Nenhum cartão</Text>
+                      </TouchableOpacity>
+                      {cartoesCredito.map((cartao) => (
+                        <TouchableOpacity
+                          key={cartao.id}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Selecionar cartão ${cartao.nome}`}
+                          style={[styles.pokerCartaoOption, { backgroundColor: cartao.cor || colors.primary }]}
+                          onPress={() => { setFormCartao(cartao.nome); setFormDropdownAberto(null) }}
+                        >
+                          <View style={styles.pokerCartaoOrb} />
+                          <View style={styles.pokerCartaoOptionTop}>
+                            <Ionicons name="hardware-chip-outline" size={22} color="#fff" />
+                            <Text style={styles.pokerCartaoBandeira}>{cartao.bandeira.toUpperCase()}</Text>
+                          </View>
+                          <View style={styles.pokerCartaoOptionBottom}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.pokerCartaoLabel}>CARTÃO DE CRÉDITO</Text>
+                              <Text numberOfLines={1} style={styles.pokerCartaoNome}>{cartao.nome}</Text>
+                            </View>
+                            {formCartao === cartao.nome && <Ionicons name="checkmark-circle" size={21} color="#fff" />}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                      {cartoesCadastrados.filter((nome) => !cartoesCredito.some((cartao) => cartao.nome === nome)).map((nome) => (
+                        <TouchableOpacity key={nome} style={styles.formDropdownOption} onPress={() => { setFormCartao(nome); setFormDropdownAberto(null) }}>
+                          <Text style={styles.formDropdownOptionText}>{nome}</Text>
+                          {formCartao === nome && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                        </TouchableOpacity>
+                      ))}
+                      {cartoesCredito.length === 0 && cartoesCadastrados.length === 0 && <Text style={styles.pokerCartaoEmpty}>Cadastre um cartão em Cadastro Cartões para selecioná-lo aqui.</Text>}
+                    </ScrollView>
+                  )}
                 </View>
 
                 {(!alvoLancamento && !itemEditando) && <View style={{ flex: 1 }}>
@@ -2646,7 +2695,7 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   formDropdownOptions: {
-    maxHeight: 140,
+    maxHeight: 240,
     marginTop: 4,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2664,6 +2713,59 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '600'
+  },
+  pokerCartaoOption: {
+    minHeight: 76,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    margin: 5,
+    borderRadius: 11,
+    overflow: 'hidden'
+  },
+  pokerCartaoOrb: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    right: -28,
+    top: -16,
+    backgroundColor: 'rgba(255,255,255,0.12)'
+  },
+  pokerCartaoOptionTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  pokerCartaoBandeira: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8
+  },
+  pokerCartaoOptionBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6
+  },
+  pokerCartaoLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.8
+  },
+  pokerCartaoNome: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2
+  },
+  pokerCartaoEmpty: {
+    color: colors.muted,
+    fontSize: 12,
+    padding: 12,
+    lineHeight: 17
   },
   inputTaxaSomenteLeitura: {
     backgroundColor: colors.surfaceHover,

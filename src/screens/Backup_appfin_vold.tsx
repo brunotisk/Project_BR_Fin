@@ -1588,3 +1588,7 @@ const styles = StyleSheet.create({
     color: '#fff'
   }
 })
+
+// Mantém disponível no backup o módulo de Projeção removido da navegação do app.
+export { ProjecaoParcelasScreen as BackupProjecaoParcelasScreen } from './ProjecaoParcelasScreen'
+export { HomeScreen as BackupResumoScreen } from './HomeScreen'

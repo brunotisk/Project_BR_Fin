@@ -50,42 +50,13 @@ export function CartoesScreen() {
       {/* Cabeçalho */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Cartões de Crédito</Text>
+          <Text style={styles.title}>Cadastro Cartões</Text>
           <Text style={styles.subtitle}>Faturas, limites e datas de corte</Text>
         </View>
         <Button
           title="+ Novo Cartão"
           onPress={() => navigation.navigate('NovoCartao')}
         />
-      </View>
-
-      {/* Ações Especiais de Cartão */}
-      <View style={styles.atalhosGrid}>
-        <TouchableOpacity
-          style={styles.atalhoCard}
-          onPress={() => navigation.navigate('ImportarFatura')}
-        >
-          <View style={[styles.atalhoIcone, { backgroundColor: colors.primaryLight }]}>
-            <Ionicons name="cloud-upload" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.atalhoInfo}>
-            <Text style={styles.atalhoTitulo}>Subir Fatura</Text>
-            <Text style={styles.atalhoSub}>Importe arquivo ou texto</Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.atalhoCard}
-          onPress={() => navigation.navigate('ProjecaoParcelas')}
-        >
-          <View style={[styles.atalhoIcone, { backgroundColor: colors.warningLight }]}>
-            <Ionicons name="trending-up" size={20} color={colors.warning} />
-          </View>
-          <View style={styles.atalhoInfo}>
-            <Text style={styles.atalhoTitulo}>Projeção Futura</Text>
-            <Text style={styles.atalhoSub}>Parcelas dos próximos meses</Text>
-          </View>
-        </TouchableOpacity>
       </View>
 
       {/* Limite Total */}
@@ -121,32 +92,45 @@ export function CartoesScreen() {
           ) : undefined
         }
         renderItem={({ item }) => (
-          <View style={[styles.cartaoCard, { backgroundColor: item.cor || colors.primary }]}>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel={`Editar cartão ${item.nome}`}
+            onPress={() => navigation.navigate('NovoCartao', { cartao: item })}
+            style={[styles.cartaoCard, { backgroundColor: item.cor || colors.primary }]}
+          >
+            <View style={styles.cartaoOrb} />
             <View style={styles.cartaoTop}>
               <View style={styles.chipRow}>
-                <Ionicons name="hardware-chip-outline" size={28} color="#fff" />
-                <Ionicons name="wifi" size={18} color="rgba(255,255,255,0.7)" style={{ marginLeft: 6 }} />
+                <Ionicons name="hardware-chip-outline" size={30} color="#fff" />
+                <Ionicons name="wifi" size={18} color="rgba(255,255,255,0.78)" style={{ marginLeft: 6 }} />
               </View>
-              <Text style={styles.bandeiraTexto}>{item.bandeira.toUpperCase()}</Text>
+              <View style={styles.cartaoTopRight}>
+                <Text style={styles.bandeiraTexto}>{item.bandeira.toUpperCase()}</Text>
+                <View style={styles.editBadge}><Ionicons name="pencil" size={13} color="#fff" /></View>
+              </View>
             </View>
 
-            <Text style={styles.cartaoNome}>{item.nome}</Text>
+            <View style={styles.cartaoIdentity}>
+              <Text style={styles.cartaoEyebrow}>CARTÃO DE CRÉDITO</Text>
+              <Text style={styles.cartaoNome} numberOfLines={1}>{item.nome}</Text>
+            </View>
 
             <View style={styles.cartaoBottom}>
-              <View>
+              <View style={styles.cartaoDetalhe}>
                 <Text style={styles.cartaoMiniLabel}>LIMITE TOTAL</Text>
-                <Text style={styles.cartaoMiniValor}>{formatCurrency(Number(item.limite))}</Text>
+                <Text style={styles.cartaoMiniValor} numberOfLines={1}>{formatCurrency(Number(item.limite))}</Text>
               </View>
-              <View>
+              <View style={styles.cartaoDetalhe}>
                 <Text style={styles.cartaoMiniLabel}>FECHAMENTO</Text>
                 <Text style={styles.cartaoMiniValor}>Dia {item.dia_fechamento}</Text>
               </View>
-              <View>
+              <View style={styles.cartaoDetalhe}>
                 <Text style={styles.cartaoMiniLabel}>VENCIMENTO</Text>
                 <Text style={styles.cartaoMiniValor}>Dia {item.dia_vencimento}</Text>
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
       />
     </View>
@@ -173,42 +157,6 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     color: colors.muted
-  },
-  atalhosGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 14
-  },
-  atalhoCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10
-  },
-  atalhoIcone: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  atalhoInfo: {
-    flex: 1
-  },
-  atalhoTitulo: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text
-  },
-  atalhoSub: {
-    fontSize: 11,
-    color: colors.muted,
-    marginTop: 1
   },
   totalCard: {
     backgroundColor: colors.surface,
@@ -239,8 +187,9 @@ const styles = StyleSheet.create({
   },
   cartaoCard: {
     borderRadius: 16,
+    overflow: 'hidden',
     padding: 18,
-    minHeight: 160,
+    minHeight: 188,
     justifyContent: 'space-between',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -253,6 +202,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
+  cartaoTopRight: {
+    alignItems: 'flex-end',
+    gap: 9
+  },
+  editBadge: {
+    width: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cartaoOrb: {
+    position: 'absolute',
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    right: -65,
+    top: 15,
+    backgroundColor: 'rgba(255,255,255,0.09)'
+  },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center'
@@ -263,20 +233,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 1
   },
+  cartaoIdentity: {
+    marginTop: 8,
+    marginBottom: 16
+  },
+  cartaoEyebrow: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 4
+  },
   cartaoNome: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '700',
-    marginVertical: 12
   },
   cartaoBottom: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    gap: 8
+  },
+  cartaoDetalhe: {
+    flex: 1,
+    minWidth: 0
   },
   cartaoMiniLabel: {
     color: 'rgba(255,255,255,0.7)',
-    fontSize: 9,
-    fontWeight: '600'
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5
   },
   cartaoMiniValor: {
     color: '#fff',

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useNavigation } from '@react-navigation/native'
+import { useNavigation, useRoute } from '@react-navigation/native'
 import { supabase } from '../services/supabase'
-import { BandeiraCartao } from '../types'
+import { BandeiraCartao, CartaoCredito } from '../types'
 import { colors } from '../theme'
 import { Input } from '../components/Input'
 import { OptionSelector } from '../components/OptionSelector'
@@ -32,12 +32,14 @@ const CORES_CARTAO = [
 
 export function NovoCartaoScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>()
-  const [nome, setNome] = useState('')
-  const [limite, setLimite] = useState('')
-  const [diaFechamento, setDiaFechamento] = useState('25')
-  const [diaVencimento, setDiaVencimento] = useState('5')
-  const [bandeira, setBandeira] = useState<BandeiraCartao>('mastercard')
-  const [cor, setCor] = useState(CORES_CARTAO[0])
+  const route = useRoute<any>()
+  const cartaoEdicao = route.params?.cartao as CartaoCredito | undefined
+  const [nome, setNome] = useState(cartaoEdicao?.nome || '')
+  const [limite, setLimite] = useState(cartaoEdicao ? String(cartaoEdicao.limite) : '')
+  const [diaFechamento, setDiaFechamento] = useState(cartaoEdicao ? String(cartaoEdicao.dia_fechamento) : '25')
+  const [diaVencimento, setDiaVencimento] = useState(cartaoEdicao ? String(cartaoEdicao.dia_vencimento) : '5')
+  const [bandeira, setBandeira] = useState<BandeiraCartao>(cartaoEdicao?.bandeira || 'mastercard')
+  const [cor, setCor] = useState(cartaoEdicao?.cor || CORES_CARTAO[0])
   const [loading, setLoading] = useState(false)
   const [erros, setErros] = useState<{ [key: string]: string }>({})
 
@@ -72,7 +74,7 @@ export function NovoCartaoScreen() {
     setErros({})
 
     try {
-      const { error } = await supabase.from('cartoes_credito').insert({
+      const dadosCartao = {
         nome: nome.trim(),
         limite: limNum,
         dia_fechamento: fech,
@@ -80,14 +82,17 @@ export function NovoCartaoScreen() {
         bandeira,
         cor,
         ativo: true
-      })
+      }
+      const { error } = cartaoEdicao
+        ? await supabase.from('cartoes_credito').update(dadosCartao).eq('id', cartaoEdicao.id)
+        : await supabase.from('cartoes_credito').insert(dadosCartao)
 
       if (error) throw error
 
-      notify('Sucesso!', 'Cartão de crédito cadastrado com sucesso.')
+      notify('Sucesso!', cartaoEdicao ? 'Cartão atualizado com sucesso.' : 'Cartão de crédito cadastrado com sucesso.')
       navigation.goBack()
     } catch (err: any) {
-      notify('Erro ao salvar cartão', err?.message || 'Falha ao salvar cartão.')
+      notify(cartaoEdicao ? 'Erro ao atualizar cartão' : 'Erro ao salvar cartão', err?.message || 'Falha ao salvar cartão.')
     } finally {
       setLoading(false)
     }
@@ -95,8 +100,8 @@ export function NovoCartaoScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Novo Cartão de Crédito</Text>
-      <Text style={styles.subtitle}>Cadastre para controlar faturas, limites e parcelas futuras</Text>
+      <Text style={styles.title}>{cartaoEdicao ? 'Editar cartão' : 'Novo Cartão de Crédito'}</Text>
+      <Text style={styles.subtitle}>{cartaoEdicao ? 'Atualize os dados do cartão cadastrado' : 'Cadastre para controlar faturas, limites e parcelas futuras'}</Text>
 
       {/* Pré-visualização do Cartão */}
       <View style={[styles.cartaoPreview, { backgroundColor: cor }]}>
@@ -190,7 +195,7 @@ export function NovoCartaoScreen() {
         </View>
 
         <View style={styles.actions}>
-          <Button title="Salvar Cartão" onPress={handleSalvar} loading={loading} />
+          <Button title={cartaoEdicao ? 'Salvar alterações' : 'Salvar Cartão'} onPress={handleSalvar} loading={loading} />
           <Button title="Cancelar" onPress={() => navigation.goBack()} variant="secondary" />
         </View>
       </View>

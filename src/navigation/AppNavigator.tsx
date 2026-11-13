@@ -12,7 +12,6 @@ import { NovaMetaScreen } from '../screens/NovaMetaScreen'
 import { NovoOrcamentoScreen } from '../screens/NovoOrcamentoScreen'
 import { NovoCartaoScreen } from '../screens/NovoCartaoScreen'
 import { ImportarFaturaScreen } from '../screens/ImportarFaturaScreen'
-import { ProjecaoParcelasScreen } from '../screens/ProjecaoParcelasScreen'
 import { NovoItemScreen } from '../screens/NovoItemScreen'
 import { FechamentoScreen } from '../screens/FechamentoScreen'
 import { CartoesControleScreen } from '../screens/CartoesControleScreen'
@@ -32,7 +31,6 @@ export type RootStackParamList = {
   NovoOrcamento: undefined
   NovoCartao: undefined
   ImportarFatura: undefined
-  ProjecaoParcelas: undefined
   Fechamento: undefined
   CartoesControle: undefined
   LimitesCartoes: undefined
@@ -84,11 +82,6 @@ export function AppNavigator() {
             options={({ route }) => ({ title: route.params?.tipo === 'compromisso' ? 'Novo compromisso' : 'Nova tarefa' })}
           />
           <Stack.Screen
-            name="ProjecaoParcelas"
-            component={ProjecaoParcelasScreen}
-            options={{ title: 'Projeção de Parcelas' }}
-          />
-          <Stack.Screen
             name="Fechamento"
             component={FechamentoScreen}
             options={{ title: 'Fechamento' }}
@@ -101,7 +94,7 @@ export function AppNavigator() {
           <Stack.Screen
             name="LimitesCartoes"
             component={CartoesScreen}
-            options={{ title: 'Limite de cartões' }}
+            options={{ title: 'Cadastro Cartões' }}
           />
           <Stack.Screen
             name="Poker"

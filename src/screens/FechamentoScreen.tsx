@@ -11,10 +11,12 @@ import {
   TouchableOpacity,
   View
 } from 'react-native'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
+import { supabase } from '../services/supabase'
 import { notify } from '../utils/notify'
 import {
   carregarFechamento,
@@ -23,11 +25,14 @@ import {
   salvarFechamento,
   salvarMesFechamentoSelecionado
 } from '../services/planilhasService'
-import { FechamentoMensal } from '../types'
+import { CartaoCredito, FechamentoMensal } from '../types'
 
 export function FechamentoScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<any>>()
   const [mesAtual, setMesAtual] = useState(carregarMesFechamentoSelecionado())
   const [fechamento, setFechamento] = useState<FechamentoMensal>(FECHAMENTO_INICIAL)
+  const [cartoes, setCartoes] = useState<CartaoCredito[]>([])
+  const [totalParcelasFuturas, setTotalParcelasFuturas] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -42,8 +47,15 @@ export function FechamentoScreen() {
 
   const carregar = useCallback(async (mes: string) => {
     try {
-      const data = await carregarFechamento(mes)
+      const hoje = new Date().toISOString().split('T')[0]
+      const [data, resCartoes, resParcelas] = await Promise.all([
+        carregarFechamento(mes),
+        supabase.from('cartoes_credito').select('*').order('criado_em', { ascending: true }),
+        supabase.from('parcelas').select('valor').gte('data_vencimento', hoje)
+      ])
       setFechamento(data)
+      if (resCartoes.data) setCartoes(resCartoes.data as CartaoCredito[])
+      if (resParcelas.data) setTotalParcelasFuturas(resParcelas.data.reduce((soma, parcela) => soma + Number(parcela.valor || 0), 0))
     } catch (err) {
       console.warn('Erro ao carregar fechamento:', err)
     } finally {
@@ -131,6 +143,91 @@ export function FechamentoScreen() {
               Apuração Mensal de Contas vs Disponibilidades ({mesAtual})
             </Text>
           </View>
+        </View>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Importar fatura de cartão"
+          style={styles.importFaturaCard}
+          onPress={() => navigation.navigate('ImportarFatura')}
+        >
+          <View style={styles.importFaturaIcon}><Ionicons name="cloud-upload-outline" size={20} color={colors.primary} /></View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.importFaturaTitle}>Importar fatura</Text>
+            <Text style={styles.importFaturaHint}>Carregue ou cole os dados da fatura</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </TouchableOpacity>
+
+        <View style={styles.cartoesHeader}>
+          <View>
+            <Text style={styles.cartoesTitle}>Cartões de crédito</Text>
+            <Text style={styles.cartoesSubtitle}>Faturas e limites cadastrados</Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('CartoesTab')} accessibilityRole="button" accessibilityLabel="Abrir cadastro de cartões">
+            <Text style={styles.cartoesLink}>Ver todos</Text>
+          </TouchableOpacity>
+        </View>
+
+        {totalParcelasFuturas > 0 && (
+          <TouchableOpacity style={styles.parcelasCard} onPress={() => navigation.navigate('ProjecaoParcelas')}>
+            <View style={styles.parcelasIcon}><Ionicons name="trending-up" size={18} color={colors.warning} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.parcelasTitle}>Faturas futuras</Text>
+              <Text style={styles.parcelasHint}>Comprometido em parcelas</Text>
+            </View>
+            <Text style={styles.parcelasValor}>{formatCurrency(totalParcelasFuturas)}</Text>
+          </TouchableOpacity>
+        )}
+
+        {cartoes.length === 0 ? (
+          <TouchableOpacity style={styles.emptyCartoes} onPress={() => navigation.navigate('CartoesTab')}>
+            <Ionicons name="card-outline" size={22} color={colors.muted} />
+            <Text style={styles.emptyCartoesText}>Nenhum cartão cadastrado. Toque para adicionar.</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+          </TouchableOpacity>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cartoesList}>
+            {cartoes.map((cartao) => (
+              <TouchableOpacity key={cartao.id} style={[styles.cartaoMini, { backgroundColor: cartao.cor || colors.primary }]} onPress={() => navigation.navigate('CartoesTab')}>
+                <View style={styles.cartaoMiniTop}>
+                  <Ionicons name="hardware-chip-outline" size={21} color="#fff" />
+                  <Text style={styles.cartaoMiniBandeira}>{cartao.bandeira.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.cartaoMiniNome} numberOfLines={1}>{cartao.nome}</Text>
+                <View style={styles.cartaoMiniBottom}>
+                  <View><Text style={styles.cartaoMiniLabel}>LIMITE</Text><Text style={styles.cartaoMiniValor}>{formatCurrency(Number(cartao.limite))}</Text></View>
+                  <View><Text style={styles.cartaoMiniLabel}>VENCE DIA</Text><Text style={styles.cartaoMiniValor}>{cartao.dia_vencimento}</Text></View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        <View style={styles.acoesHeader}>
+          <Text style={styles.cartoesTitle}>Mais Ações</Text>
+        </View>
+        <View style={styles.acoesGrid}>
+          <TouchableOpacity style={styles.acaoCard} onPress={() => navigation.navigate('NovaTransacao')}>
+            <Ionicons name="add-circle-outline" size={19} color={colors.primary} />
+            <Text style={styles.acaoTexto}>Lançamento</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={() => navigation.navigate('NovaConta')}>
+            <Ionicons name="wallet-outline" size={19} color={colors.primary} />
+            <Text style={styles.acaoTexto}>Conta</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={() => navigation.navigate('NovaCategoria')}>
+            <Ionicons name="grid-outline" size={19} color={colors.primary} />
+            <Text style={styles.acaoTexto}>Categoria</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={() => navigation.navigate('NovaMeta')}>
+            <Ionicons name="flag-outline" size={19} color={colors.primary} />
+            <Text style={styles.acaoTexto}>Meta</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.acaoCard} onPress={() => navigation.navigate('NovoOrcamento')}>
+            <Ionicons name="pie-chart-outline" size={19} color={colors.primary} />
+            <Text style={styles.acaoTexto}>Orçamento</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Seletor de mêsFechamento */}
@@ -366,6 +463,52 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 10
   },
+  importFaturaCard: {
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    marginBottom: 14,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13
+  },
+  importFaturaIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: colors.primaryLight
+  },
+  importFaturaTitle: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  importFaturaHint: { color: colors.muted, fontSize: 11 },
+  acoesHeader: { marginTop: 4 },
+  acoesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  acaoCard: { minWidth: '30%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 11, paddingVertical: 11, paddingHorizontal: 10 },
+  acaoTexto: { color: colors.text, fontSize: 11, fontWeight: '600' },
+  cartoesHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 },
+  cartoesTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  cartoesSubtitle: { color: colors.muted, fontSize: 11, marginTop: 2 },
+  cartoesLink: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  parcelasCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.warningLight, borderRadius: 12, padding: 12 },
+  parcelasIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#fff8', alignItems: 'center', justifyContent: 'center' },
+  parcelasTitle: { color: colors.text, fontSize: 12, fontWeight: '700' },
+  parcelasHint: { color: colors.muted, fontSize: 10, marginTop: 2 },
+  parcelasValor: { color: colors.text, fontWeight: '800', fontSize: 13 },
+  emptyCartoes: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 12, padding: 13 },
+  emptyCartoesText: { color: colors.muted, fontSize: 12, flex: 1 },
+  cartoesList: { gap: 10, paddingRight: 8 },
+  cartaoMini: { width: 210, minHeight: 126, borderRadius: 14, padding: 14, justifyContent: 'space-between', overflow: 'hidden' },
+  cartaoMiniTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cartaoMiniBandeira: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  cartaoMiniNome: { color: '#fff', fontSize: 15, fontWeight: '700', marginVertical: 8 },
+  cartaoMiniBottom: { flexDirection: 'row', justifyContent: 'space-between' },
+  cartaoMiniLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: '700' },
+  cartaoMiniValor: { color: '#fff', fontSize: 11, fontWeight: '700', marginTop: 2 },
   headerTitle: {
     fontSize: 22,
     fontWeight: '800',
