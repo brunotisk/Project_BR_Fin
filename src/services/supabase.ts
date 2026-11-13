@@ -1,3 +1,5 @@
+/// <reference types="expo/types" />
+
 import { AppState } from 'react-native'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '../types/database'

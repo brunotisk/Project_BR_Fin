@@ -141,7 +141,7 @@ export function CategoriasScreen() {
                 />
               </View>
             </View>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => {
           const iconeNome = (item.icone as any) || (item.tipo === 'receita' ? 'cash-outline' : 'cart-outline')

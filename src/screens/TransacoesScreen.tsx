@@ -278,7 +278,7 @@ export function TransacoesScreen() {
                   <Text style={styles.emptyTitle}>Nenhuma transação encontrada</Text>
                   <Text style={styles.emptyText}>Suba sua fatura ou lance compras para visualizar aqui.</Text>
                 </View>
-              ) : null
+              ) : undefined
             }
             renderItem={({ item }) => {
               const isReceita = item.tipo === 'receita'

@@ -238,7 +238,7 @@ export function ProjecaoParcelasScreen() {
                   />
                 </View>
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item }) => {
             const isUltimaParcela = item.numero === item.total_parcelas

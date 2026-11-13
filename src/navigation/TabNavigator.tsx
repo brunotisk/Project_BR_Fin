@@ -79,9 +79,10 @@ function TabNavigatorContent() {
   return (
     <Tab.Navigator initialRouteName={primeiraTelaAtiva} screenOptions={{
       headerShown: false,
+      tabBarShowLabel: true,
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
-      tabBarActiveBackgroundColor: colors.borderFocus,
+      tabBarActiveBackgroundColor: '#7FA487',
       tabBarStyle: {
         position: 'absolute',
         left: 24,
@@ -91,9 +92,9 @@ function TabNavigatorContent() {
         paddingTop: 4,
         paddingBottom: 4,
         paddingHorizontal: 4,
-        backgroundColor: '#E8F0E9',
+        backgroundColor: '#DCE8DE',
         borderWidth: 1,
-        borderColor: '#C5D5C8',
+        borderColor: '#B5C9B8',
         borderTopWidth: 1,
         borderRadius: 32,
         elevation: 8,
@@ -122,7 +123,7 @@ type FinanceParamList = {
 const FinanceStack = createNativeStackNavigator<FinanceParamList>()
 
 function FinanceiroNavigator() {
-  return <FinanceStack.Navigator initialRouteName="HomeTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
+  return <FinanceStack.Navigator initialRouteName="PokerTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
     ['PokerTab', 'Poker'],
     ['CartoesTab', 'Cartões'],
     ['TransacoesTab', 'Transações'],

@@ -215,7 +215,7 @@ export function ConfiguracoesScreen() {
       <Text style={styles.title}>Configurações</Text>
       <Text style={styles.subtitle}>Preferências, compartilhamento e dados do aplicativo.</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
-        {([['home', 'Home', 'home-outline'], ['agenda', 'Agenda', 'calendar-outline'], ['poker', 'Poker', 'trophy-outline'], ['financeiro', 'Financeiro', 'wallet-outline'], ['admin', 'Admin', 'settings-outline']] as [CategoriaConfiguracao, string, keyof typeof Ionicons.glyphMap][]).map(([id, label, icon]) => <TouchableOpacity key={id} onPress={() => setCategoria(id)} style={[styles.categoryTab, categoria === id && styles.categoryTabActive]}><Ionicons name={icon} size={16} color={categoria === id ? '#fff' : colors.muted} /><Text style={[styles.categoryTabText, categoria === id && styles.categoryTabTextActive]}>{label}</Text></TouchableOpacity>)}
+        {([['home', 'Home', 'home-outline'], ['agenda', 'Agenda', 'calendar-outline'], ['poker', 'Poker', 'trophy-outline'], ['financeiro', 'Financeiro', 'wallet-outline'], ['admin', 'Admin', 'settings-outline']] as [CategoriaConfiguracao, string, keyof typeof Ionicons.glyphMap][]).map(([id, label, icon]) => <TouchableOpacity key={id} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: categoria === id }} onPress={() => setCategoria(id)} style={[styles.categoryTab, categoria === id && styles.categoryTabActive]}><Ionicons name={icon} size={16} color={categoria === id ? '#fff' : colors.muted} />{categoria === id && <Text style={[styles.categoryTabText, styles.categoryTabTextActive]}>{label}</Text>}</TouchableOpacity>)}
       </ScrollView>
     </View>
 

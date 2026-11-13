@@ -1038,14 +1038,6 @@ export function PokerScreen() {
                   </View>
                 </View></View>}
                 {!resumoFechado && <View style={[styles.sessaoTopActions, detalhadoFechado && styles.sessaoTopActionsDetalhadoFechado]}>
-                  {!diaTravado ? <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
-                    style={styles.sessionDeleteButton}
-                    onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                  </TouchableOpacity> : <View style={styles.sessionActionPlaceholder} />}
                   {!(diaTravado && visualizacaoSessoes === 'resumido') && <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel={diaTravado ? `Reabrir dia ${formatarDataPoker(dataSessao, mesBaseSessao)}` : `Travar dia ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
@@ -1170,6 +1162,16 @@ export function PokerScreen() {
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {locaisDisponiveis.length > 0 ? locaisDisponiveis.map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>) : <Text style={{ color: colors.muted, fontSize: 12 }}>Todos os locais cadastrados já estão nesta sessão.</Text>}
                 </View>
+              </View>}
+              {!diaTravado && <View style={{ alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 8 }}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
+                  style={styles.sessionDeleteButton}
+                  onPress={() => setSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, itens })}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                </TouchableOpacity>
               </View>}
             </View>
           )
@@ -1905,10 +1907,6 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
     borderRadius: 8,
     backgroundColor: '#FEF2F2'
-  },
-  sessionActionPlaceholder: {
-    width: 38,
-    height: 38
   },
   sessionDeleteButtonDisabled: {
     borderColor: '#FCD34D',

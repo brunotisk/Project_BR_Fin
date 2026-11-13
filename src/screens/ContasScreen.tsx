@@ -75,7 +75,7 @@ export function ContasScreen() {
                 />
               </View>
             </View>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => (
           <View style={styles.contaCard}>

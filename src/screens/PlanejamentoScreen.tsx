@@ -97,7 +97,7 @@ export function PlanejamentoScreen() {
                   />
                 </View>
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item }) => {
             const objetivo = Number(item.valor_objetivo) || 1
@@ -149,7 +149,7 @@ export function PlanejamentoScreen() {
                   />
                 </View>
               </View>
-            ) : null
+            ) : undefined
           }
           renderItem={({ item }) => (
             <View style={styles.card}>

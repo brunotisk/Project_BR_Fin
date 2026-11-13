@@ -393,16 +393,23 @@ export async function salvarCartoesControle(
   const usuarioId = userData?.user?.id
   if (!usuarioId) throw new Error('Faça login para sincronizar os cartões.')
 
+  const atualizadoEm = new Date().toISOString()
   const records = itens.map((item, index) => {
-    const { criado_em: _criadoEm, ...dados } = item
     return {
-      ...dados,
       id: UUID_POKER.test(item.id) ? item.id : gerarUuidPoker(),
       mes_referencia: mesFormatado,
       usuario_id: usuarioId,
+      tabela_tipo: item.tabela_tipo,
+      cartao_nome: item.cartao_nome,
       ordem: index,
-      // A tabela define esses valores como NOT NULL; registros vigentes e dados
-      // legados podem não ter os campos de detalhamento preenchidos.
+      fechamento: item.fechamento || null,
+      pagamento: item.pagamento || null,
+      fechamento_estimado: Boolean(item.fechamento_estimado),
+      status: item.status || 'aberto',
+      atualizado_em_texto: item.atualizado_em_texto || null,
+      // Dados locais antigos podem carregar um atualizado_em nulo; nunca envie
+      // esse valor para a coluna NOT NULL da tabela.
+      atualizado_em: atualizadoEm,
       valor: Number(item.valor) || 0,
       valor_ma: Number(item.valor_ma) || 0,
       valor_sem_ma: Number(item.valor_sem_ma) || 0

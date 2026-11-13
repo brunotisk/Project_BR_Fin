@@ -7,18 +7,35 @@
     "userInterfaceStyle": "light",
     "scheme": "appfinanceiro",
     "icon": "./assets/plenna/icon-512.png",
-    "splash": {
-      "image": "./assets/plenna/splash-screen.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F5F3EA"
+    "ios": {
+      "supportsTablet": true
     },
-    "ios": { "supportsTablet": true },
-    "android": { "package": "com.appfinanceiro.app" },
+    "android": {
+      "package": "com.appfinanceiro.app"
+    },
     "web": {
       "bundler": "metro",
       "name": "Plenna",
       "shortName": "Plenna",
-      "favicon": "./public/favicon.png"
-    }
+      "favicon": "./public/favicon.png",
+      "splash": {
+        "image": "./assets/plenna/splash-screen.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#F5F3EA"
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-status-bar",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/plenna/icon-192.png",
+          "imageWidth": 100,
+          "backgroundColor": "#F5F3EA"
+        }
+      ]
+    ]
   }
 }

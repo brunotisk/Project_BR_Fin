@@ -118,7 +118,7 @@ export function CartoesScreen() {
                 />
               </View>
             </View>
-          ) : null
+          ) : undefined
         }
         renderItem={({ item }) => (
           <View style={[styles.cartaoCard, { backgroundColor: item.cor || colors.primary }]}>
