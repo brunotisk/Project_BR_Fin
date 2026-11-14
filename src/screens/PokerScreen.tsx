@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   KeyboardAvoidingView,
+  ActivityIndicator,
   Image,
   Modal,
   Platform,
@@ -29,7 +30,6 @@ import {
   carregarLocaisPoker,
   carregarConfiguracoesLocaisPoker,
   sincronizarConfiguracoesLocaisPoker,
-  carregarCartoesPoker,
   carregarTaxaPadraoPoker,
   carregarFormatoNegativoPoker,
   carregarSessoesPoker,
@@ -50,13 +50,13 @@ import {
   excluirSessaoPoker as excluirSessaoPokerService,
   salvarLancamentoPoker,
   salvarLocaisPoker,
-  salvarCartoesPoker,
+  carregarMetadadosContagemFotosPoker,
   carregarFotosPoker,
+  carregarUrlOriginalFotoPoker,
   adicionarFotoPoker,
-  excluirFotoPoker,
-  FotoPoker
+  excluirFotoPoker
 } from '../services/planilhasService'
-import type { FormatoNegativoPoker, LocalPokerConfig } from '../services/planilhasService'
+import type { FormatoNegativoPoker, LocalPokerConfig, FotoPoker, MetadadoContagemFotoPoker } from '../services/planilhasService'
 import { CartaoCredito, LancamentoPoker } from '../types'
 
 const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
@@ -81,27 +81,47 @@ const LOGOS_CLUBES: Record<string, number> = {
 }
 const MES_NUMERO: Record<string, number> = { jan: 1, janeiro: 1, fev: 2, fevereiro: 2, mar: 3, março: 3, abr: 4, abril: 4, mai: 5, maio: 5, jun: 6, junho: 6, jul: 7, julho: 7, ago: 8, agosto: 8, set: 9, setembro: 9, out: 10, outubro: 10, nov: 11, novembro: 11, dez: 12, dezembro: 12 }
 
-function dataPokerOrdenacao(data: string) {
-  const m = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
-  if (!m) return 0
-  const dia = Number(m[1])
-  const mes = MES_NUMERO[m[2]] || 0
-  const ano = m[3] ? Number(m[3].length === 2 ? `20${m[3]}` : m[3]) : 0
-  return ano * 10000 + mes * 100 + dia
+function chaveMesSessao(data: string, mesFatura = '') {
+  const valor = data.trim().toLowerCase()
+  const iso = valor.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}`
+  const match = valor.match(/^(\d{1,2})[\/-]([a-zç]+|\d{1,2})(?:[\/-](\d{2,4}))?$/i)
+  if (!match) return normalizarMesBase(mesFatura) || mesBaseHojeKey()
+  const mes = /^\d+$/.test(match[2]) ? Number(match[2]) : MES_NUMERO[match[2]] || 0
+  if (!mes || mes > 12) return normalizarMesBase(mesFatura) || mesBaseHojeKey()
+  const base = normalizarMesBase(mesFatura)
+  const anoBase = Number(base?.slice(0, 4) || hojeISO().slice(0, 4))
+  const mesBaseNumero = Number(base?.slice(5, 7) || mes)
+  const ano = match[3]
+    ? Number(match[3].length === 2 ? `20${match[3]}` : match[3])
+    : anoBase - (mes > mesBaseNumero ? 1 : 0)
+  return `${ano}-${String(mes).padStart(2, '0')}`
+}
+
+function dataSessaoCanonica(data: string, mesFatura = '') {
+  const valor = data.trim().toLowerCase()
+  const iso = valor.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+  const match = valor.match(/^(\d{1,2})[\/-]([a-zç]+|\d{1,2})(?:[\/-](\d{2,4}))?$/i)
+  if (!match) return valor
+  const mesKey = chaveMesSessao(data, mesFatura)
+  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(mesKey.slice(0, 4))
+  const mes = /^\d+$/.test(match[2]) ? Number(match[2]) : MES_NUMERO[match[2]] || 0
+  return mes ? `${ano}-${String(mes).padStart(2, '0')}-${match[1].padStart(2, '0')}` : valor
+}
+
+function dataPokerOrdenacao(data: string, mesFatura = '') {
+  const canonica = dataSessaoCanonica(data, mesFatura)
+  const iso = canonica.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return iso ? Number(`${iso[1]}${iso[2]}${iso[3]}`) : 0
 }
 
 function dataSessaoOrdenacao(data: string, mesBase: string) {
-  const match = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
-  if (!match) return dataPokerOrdenacao(data)
-  const dia = Number(match[1])
-  const mes = MES_NUMERO[match[2]] || 0
-  const chaveMes = chaveMesDaDataCartao(data, mesBase)
-  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(chaveMes.slice(0, 4))
-  return ano * 10000 + mes * 100 + dia
+  return dataPokerOrdenacao(data, mesBase)
 }
 
 function compararLancamentosRecentes(a: LancamentoPoker, b: LancamentoPoker) {
-  const porData = dataPokerOrdenacao(b.data_cartao) - dataPokerOrdenacao(a.data_cartao)
+  const porData = dataPokerOrdenacao(b.data_cartao, b.mes_base) - dataPokerOrdenacao(a.data_cartao, a.mes_base)
   if (porData) return porData
   const porOrdem = (Number(b.ordem) || 0) - (Number(a.ordem) || 0)
   return porOrdem || String(b.criado_em || b.id).localeCompare(String(a.criado_em || a.id))
@@ -113,12 +133,7 @@ function dataPokerHoje() {
 }
 
 function chaveMesDaDataCartao(data: string, mesBase: string) {
-  const match = data.trim().toLowerCase().match(/^(\d{1,2})[\/-]([a-zç]+)(?:[\/-](\d{2,4}))?$/i)
-  if (!match) return normalizarMesBase(mesBase) || mesBaseHojeKey()
-  const anoBase = Number(normalizarMesBase(mesBase)?.slice(0, 4) || mesBaseHojeKey().slice(0, 4))
-  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : anoBase
-  const mes = MES_NUMERO[match[2]]
-  return mes ? `${ano}-${String(mes).padStart(2, '0')}` : mesBaseHojeKey()
+  return chaveMesSessao(data, mesBase)
 }
 
 function deslocarMes(valor: string, deslocamento: number) {
@@ -144,8 +159,8 @@ function formatarDataPoker(data: string | null | undefined, mesBase?: string) {
   const dia = Number(match[1])
   const mes = /^\d+$/.test(match[2]) ? Number(match[2]) : MES_NUMERO[match[2]]
   if (!mes || mes < 1 || mes > 12) return data
-  const anoBase = normalizarMesBase(mesBase || '')?.slice(0, 4) || hojeISO().slice(0, 4)
-  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(anoBase)
+  const mesSessao = chaveMesSessao(data, mesBase || '')
+  const ano = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : Number(mesSessao.slice(0, 4))
   return `${String(dia).padStart(2, '0')}/${MESES_ABREVIADOS[mes - 1]}/${ano}`
 }
 
@@ -176,6 +191,12 @@ function proximoMesBaseKey() {
   const anoSeguinte = Math.floor(indice / 12)
   const mesSeguinte = (indice % 12) + 1
   return `${anoSeguinte}-${String(mesSeguinte).padStart(2, '0')}`
+}
+
+function sugerirMesFatura(diaFechamento: number | string | null | undefined) {
+  const diaHoje = Number(hojeISO().slice(8, 10))
+  const fechamento = Number(diaFechamento)
+  return fechamento > 0 && diaHoje > fechamento ? proximoMesBaseKey() : mesBaseHojeKey()
 }
 
 function decomporMesBase(valor: string): { ano: number | null; mes: number } | null {
@@ -223,7 +244,7 @@ function formatarValorPokerCompacto(valor: number) {
 }
 
 export function PokerScreen() {
-  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes'>('detalhado')
+  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes'>('resumido')
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
@@ -234,25 +255,32 @@ export function PokerScreen() {
   const [configuracoesLocais, setConfiguracoesLocais] = useState<LocalPokerConfig[]>(carregarConfiguracoesLocaisPoker())
   const [sessoesSalvas, setSessoesSalvas] = useState<SessaoPoker[]>([])
   const [fotosPoker, setFotosPoker] = useState<FotoPoker[]>([])
+  const [metadadosContagemFotos, setMetadadosContagemFotos] = useState<MetadadoContagemFotoPoker[]>([])
+  const [menusFotosAbertos, setMenusFotosAbertos] = useState<Record<string, boolean>>({})
+  const [fotosCarregando, setFotosCarregando] = useState<Record<string, boolean>>({})
+  const fotosLocaisCarregadas = useRef(new Set<string>())
+  const fotosLocaisEmCarregamento = useRef(new Set<string>())
   const [fotoVisualizando, setFotoVisualizando] = useState<FotoPoker | null>(null)
   const [fotoExcluirConfirmar, setFotoExcluirConfirmar] = useState<FotoPoker | null>(null)
   const [enviandoFotosLocal, setEnviandoFotosLocal] = useState<string | null>(null)
-  const [cartoesCadastrados, setCartoesCadastrados] = useState<string[]>(['Nubank', 'PicPay', 'BTG'])
   const [cartoesCredito, setCartoesCredito] = useState<CartaoCredito[]>([])
 
   const [mesFiltro, setMesFiltro] = useState<string>('Todos')
   const [filtroMesAberto, setFiltroMesAberto] = useState(false)
+  const [mesGraficoFiltro, setMesGraficoFiltro] = useState(mesBaseHojeKey())
+  const [filtroMesGraficoAberto, setFiltroMesGraficoAberto] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   // Modal para Nova Entrada / Edição de Linha
   const [modalNovoVisible, setModalNovoVisible] = useState(false)
   const [modalNovaSessaoVisible, setModalNovaSessaoVisible] = useState(false)
-  const [alvoLancamento, setAlvoLancamento] = useState<{ mesBase: string; dataCartao: string; local: string } | null>(null)
+  const [alvoLancamento, setAlvoLancamento] = useState<{ dataCartao: string; local: string } | null>(null)
   const [itemEditando, setItemEditando] = useState<LancamentoPoker | null>(null)
   const [itemExcluirConfirmar, setItemExcluirConfirmar] = useState<LancamentoPoker | null>(null)
   const [sessaoExcluirConfirmar, setSessaoExcluirConfirmar] = useState<{ dataCartao: string; mesBase: string; itens: LancamentoPoker[] } | null>(null)
   const [localSessaoExcluirConfirmar, setLocalSessaoExcluirConfirmar] = useState<{ dataCartao: string; mesBase: string; local: string; itens: LancamentoPoker[] } | null>(null)
+  const [menuAdicionarLocalAberto, setMenuAdicionarLocalAberto] = useState<string | null>(null)
 
   // Modal para Dropdown Verde (Local ou Cartão)
   const [modalDropdownVisible, setModalDropdownVisible] = useState(false)
@@ -269,6 +297,7 @@ export function PokerScreen() {
   const [cashoutDataAlvo, setCashoutDataAlvo] = useState('')
   const [cashoutMesBaseAlvo, setCashoutMesBaseAlvo] = useState('')
   const [cashoutInputsPorLocal, setCashoutInputsPorLocal] = useState<Record<string, string>>({})
+  const [cashoutValoresAnteriores, setCashoutValoresAnteriores] = useState<Record<string, string>>({})
   const [salvandoCashout, setSalvandoCashout] = useState(false)
 
   // Modal para Editar Taxa %
@@ -300,7 +329,6 @@ export function PokerScreen() {
       const configuracoesSincronizadas = await sincronizarConfiguracoesLocaisPoker().catch(() => carregarConfiguracoesLocaisPoker())
       setConfiguracoesLocais(configuracoesSincronizadas)
       setLocaisCadastrados(ordenarLocaisPorCadastro(carregarLocaisPoker(), configuracoesSincronizadas))
-      setCartoesCadastrados(carregarCartoesPoker())
       const { data: cartoesCreditoSalvos, error: erroCartoesCredito } = await supabase
         .from('cartoes_credito')
         .select('*')
@@ -312,7 +340,12 @@ export function PokerScreen() {
         setCartoesCredito((cartoesCreditoSalvos as CartaoCredito[]) || [])
       }
       setSessoesSalvas(await carregarSessoesPoker())
-      setFotosPoker(await carregarFotosPoker())
+      try {
+        setMetadadosContagemFotos(await carregarMetadadosContagemFotosPoker())
+      } catch (erro) {
+        console.warn('Não foi possível carregar a contagem de fotos do Poker:', erro)
+        setMetadadosContagemFotos([])
+      }
     } catch (err) {
       console.warn('Erro ao carregar Poker:', err)
       setLancamentos([])
@@ -326,23 +359,54 @@ export function PokerScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setVisualizacaoSessoes('resumido')
       carregar()
     }, [carregar])
   )
+
+  const alternarMenuFotos = async (mesBase: string, dataCartao: string, local: string, nomesLocais: string[]) => {
+    const chave = `${mesBase}|${dataCartao}|${local}`
+    const abrir = !menusFotosAbertos[chave]
+    setMenusFotosAbertos((atuais) => ({ ...atuais, [chave]: abrir }))
+    if (!abrir || fotosLocaisCarregadas.current.has(chave) || fotosLocaisEmCarregamento.current.has(chave)) return
+
+    fotosLocaisEmCarregamento.current.add(chave)
+    setFotosCarregando((atuais) => ({ ...atuais, [chave]: true }))
+    try {
+      const fotos = await carregarFotosPoker({ dataCartao, locais: nomesLocais })
+      setFotosPoker((atuais) => {
+        const idsNovos = new Set(fotos.map((foto) => foto.id))
+        return [...atuais.filter((foto) => !idsNovos.has(foto.id)), ...fotos]
+      })
+      fotosLocaisCarregadas.current.add(chave)
+    } catch (erro: any) {
+      setMenusFotosAbertos((atuais) => ({ ...atuais, [chave]: false }))
+      notify('Não foi possível carregar as fotos', erro?.message || 'Verifique sua conexão e tente novamente.')
+    } finally {
+      fotosLocaisEmCarregamento.current.delete(chave)
+      setFotosCarregando((atuais) => ({ ...atuais, [chave]: false }))
+    }
+  }
 
   // Filtrar lançamentos por mês
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter((item) => {
       if (mesFiltro === 'Todos') return true
-      return normalizarMesBase(item.mes_base) === normalizarMesBase(mesFiltro)
+      return chaveMesSessao(item.data_cartao, item.mes_base) === normalizarMesBase(mesFiltro)
     })
   }, [lancamentos, mesFiltro])
 
   const opcoesMesBase = useMemo(() => [mesBaseHojeKey(), proximoMesBaseKey()].map((valor) => ({ valor, label: rotuloMesBase(valor) })), [])
   const opcoesFiltroMesBase = useMemo(() => Array.from(new Set([
-    ...lancamentos.map((item) => normalizarMesBase(item.mes_base)),
-    ...sessoesSalvas.map((sessao) => normalizarMesBase(sessao.mes_base))
+    ...lancamentos.map((item) => chaveMesSessao(item.data_cartao, item.mes_base)),
+    ...sessoesSalvas.map((sessao) => chaveMesSessao(sessao.data_cartao, sessao.mes_base))
   ].filter((valor): valor is string => Boolean(valor)))).sort((a, b) => b.localeCompare(a)).map((valor) => ({ valor, label: rotuloMesBase(valor) })), [lancamentos, sessoesSalvas])
+  const opcoesFiltroMesGrafico = useMemo(() => [
+    { valor: 'Todos', label: 'Todos os meses' },
+    ...Array.from(new Set([mesBaseHojeKey(), ...opcoesFiltroMesBase.map((opcao) => opcao.valor)]))
+      .sort((a, b) => b.localeCompare(a))
+      .map((valor) => ({ valor, label: rotuloMesBase(valor) }))
+  ], [opcoesFiltroMesBase])
   const diasCalendario = useMemo(() => {
     const [ano, mes] = mesCalendario.split('-').map(Number)
     const primeiroDia = new Date(ano, mes - 1, 1).getDay()
@@ -351,25 +415,30 @@ export function PokerScreen() {
   }, [mesCalendario])
 
   // Agrupar por data da sessão (ex: '31/out', '30/out', '28/out')
-  const sessoesAgrupadas = useMemo(() => {
+  const sessoesAgrupadasTodas = useMemo(() => {
     const map = new Map<string, { data: string; mesBase: string; itens: LancamentoPoker[]; locais: string[] }>()
-    lancamentosFiltrados.forEach((item) => {
+    lancamentos.forEach((item) => {
       const data = item.data_cartao || 'Sem Data'
-      const mesBase = normalizarMesBase(item.mes_base) || item.mes_base
-      const key = `${mesBase}|${data}`
+      const dataChave = dataSessaoCanonica(data, item.mes_base)
+      const mesBase = dataChave.slice(0, 7)
+      const key = dataChave
       if (!map.has(key)) map.set(key, { data, mesBase, itens: [], locais: [] })
       map.get(key)!.itens.push(item)
       if (item.local && !map.get(key)!.locais.includes(item.local)) map.get(key)!.locais.push(item.local)
     })
     sessoesSalvas.forEach((sessao) => {
-      if (mesFiltro !== 'Todos' && normalizarMesBase(sessao.mes_base) !== normalizarMesBase(mesFiltro)) return
-      const key = `${normalizarMesBase(sessao.mes_base) || sessao.mes_base}|${sessao.data_cartao}`
-      if (!map.has(key)) map.set(key, { data: sessao.data_cartao, mesBase: sessao.mes_base, itens: [], locais: [] })
+      const dataChave = dataSessaoCanonica(sessao.data_cartao, sessao.mes_base)
+      const mesBase = dataChave.slice(0, 7)
+      const key = dataChave
+      if (!map.has(key)) map.set(key, { data: sessao.data_cartao, mesBase, itens: [], locais: [] })
       sessao.locais.forEach((local) => { if (!map.get(key)!.locais.includes(local)) map.get(key)!.locais.push(local) })
     })
     return Array.from(map.values()).map((s) => ({ ...s, itens: s.itens.sort(compararLancamentosRecentes), locais: s.locais }))
       .sort((a, b) => (dataSessaoOrdenacao(b.data, b.mesBase) - dataSessaoOrdenacao(a.data, a.mesBase)) || b.mesBase.localeCompare(a.mesBase))
-  }, [lancamentosFiltrados, sessoesSalvas, mesFiltro])
+  }, [lancamentos, sessoesSalvas])
+  const sessoesAgrupadas = useMemo(() => mesFiltro === 'Todos'
+    ? sessoesAgrupadasTodas
+    : sessoesAgrupadasTodas.filter((sessao) => sessao.mesBase === normalizarMesBase(mesFiltro)), [sessoesAgrupadasTodas, mesFiltro])
 
   const totalSacadoGeral = useMemo(() => lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.valor) || 0), 0), [lancamentosFiltrados])
   const totalTaxaGeral = useMemo(() => lancamentosFiltrados.reduce((acc, it) => acc + (Number(it.taxa) || 0), 0), [lancamentosFiltrados])
@@ -382,39 +451,46 @@ export function PokerScreen() {
 
   // Gráficos mensais independentes do filtro aplicado à lista de sessões.
   const dadosGraficosMensais = useMemo(() => {
-    const sessoes = new Map<string, { mesBase: string; buyIn: number; taxas: number }>()
-    const garantirSessao = (mesBaseOriginal: string, data: string) => {
-      const mesBase = normalizarMesBase(mesBaseOriginal) || mesBaseOriginal
-      const chave = `${mesBase}|${data}`
-      if (!sessoes.has(chave)) sessoes.set(chave, { mesBase, buyIn: 0, taxas: 0 })
+    const sessoes = new Map<string, { mesBase: string; data: string; buyIn: number; taxas: number }>()
+    const garantirSessao = (data: string, mesFatura: string) => {
+      const dataCanonica = dataSessaoCanonica(data, mesFatura)
+      const mesBase = dataCanonica.slice(0, 7)
+      const chave = dataCanonica
+      if (!sessoes.has(chave)) sessoes.set(chave, { mesBase, data, buyIn: 0, taxas: 0 })
       return sessoes.get(chave)!
     }
     lancamentos.forEach((item) => {
-      const sessao = garantirSessao(item.mes_base, item.data_cartao || 'Sem Data')
+      const sessao = garantirSessao(item.data_cartao || 'Sem Data', item.mes_base)
       sessao.buyIn += Number(item.valor) || 0
       sessao.taxas += Number(item.taxa) || 0
     })
-    sessoesSalvas.forEach((sessao) => garantirSessao(sessao.mes_base, sessao.data_cartao))
+    sessoesSalvas.forEach((sessao) => garantirSessao(sessao.data_cartao, sessao.mes_base))
     const meses = new Map<string, { quantidade: number; buyIn: number; lucro: number }>()
-    sessoes.forEach((sessao, chave) => {
+    sessoes.forEach((sessao) => {
       const atual = meses.get(sessao.mesBase) || { quantidade: 0, buyIn: 0, lucro: 0 }
       atual.quantidade += 1
       atual.buyIn += sessao.buyIn
-      atual.lucro += obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, chave.slice(chave.indexOf('|') + 1), sessao.mesBase)) - sessao.buyIn - sessao.taxas
+      atual.lucro += obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, sessao.data, sessao.mesBase)) - sessao.buyIn - sessao.taxas
       meses.set(sessao.mesBase, atual)
     })
     return Array.from(meses.entries()).map(([mesBase, valores]) => ({ mesBase, label: rotuloMesBaseCurto(mesBase), ...valores }))
       .sort((a, b) => b.mesBase.localeCompare(a.mesBase))
   }, [lancamentos, sessoesSalvas, cashouts])
-  const maiorContagemSessoesMes = Math.max(1, ...dadosGraficosMensais.map((item) => item.quantidade))
-  const maiorFluxoMensal = Math.max(1, ...dadosGraficosMensais.map((item) => item.buyIn + Math.abs(item.lucro)))
+  const dadosGraficosMensaisSelecionados = useMemo(() => mesGraficoFiltro === 'Todos'
+    ? dadosGraficosMensais
+    : dadosGraficosMensais.filter((mes) => mes.mesBase === mesGraficoFiltro), [dadosGraficosMensais, mesGraficoFiltro])
+  const sessoesGraficosSelecionadas = useMemo(() => mesGraficoFiltro === 'Todos'
+    ? sessoesAgrupadasTodas
+    : sessoesAgrupadasTodas.filter((sessao) => sessao.mesBase === mesGraficoFiltro), [sessoesAgrupadasTodas, mesGraficoFiltro])
+  const maiorContagemSessoesMes = Math.max(1, ...dadosGraficosMensaisSelecionados.map((item) => item.quantidade))
+  const maiorFluxoMensal = Math.max(1, ...dadosGraficosMensaisSelecionados.map((item) => item.buyIn + Math.abs(item.lucro)))
 
-  const dadosGraficosSessoes = useMemo(() => sessoesAgrupadas.map((sessao) => {
+  const dadosGraficosSessoes = useMemo(() => sessoesGraficosSelecionadas.map((sessao) => {
     const buyIn = sessao.itens.reduce((total, item) => total + (Number(item.valor) || 0), 0)
     const taxas = sessao.itens.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
     const cashout = obterTotalCashoutSessao(obterCashoutPokerSessao(cashouts, sessao.data, sessao.mesBase))
     return { data: sessao.data, mesBase: sessao.mesBase, buyIn, cashout, net: cashout - buyIn - taxas }
-  }), [sessoesAgrupadas, cashouts])
+  }), [sessoesGraficosSelecionadas, cashouts])
   const dadosResultadoOrdenados = useMemo(() => [...dadosGraficosSessoes].sort((a, b) => {
     if (ordenacaoResultadoGrafico === 'data_asc') return dataSessaoOrdenacao(a.data, a.mesBase) - dataSessaoOrdenacao(b.data, b.mesBase)
     if (ordenacaoResultadoGrafico === 'resultado_asc') return a.net - b.net
@@ -423,7 +499,7 @@ export function PokerScreen() {
   }), [dadosGraficosSessoes, ordenacaoResultadoGrafico])
   const dadosGraficosLocais = useMemo(() => {
     const porLocal = new Map<string, { buyIn: number; taxas: number; cashout: number }>()
-    sessoesAgrupadas.forEach((sessao) => {
+    sessoesGraficosSelecionadas.forEach((sessao) => {
       sessao.itens.forEach((item) => {
         const nome = nomeLocalCanonico(item.local, configuracoesLocais)
         const atual = porLocal.get(nome) || { buyIn: 0, taxas: 0, cashout: 0 }
@@ -455,7 +531,7 @@ export function PokerScreen() {
       const dados = porLocal.get(local) || { buyIn: 0, taxas: 0, cashout: 0 }
       return { local, ...dados, net: dados.cashout - dados.buyIn - dados.taxas }
     })
-  }, [sessoesAgrupadas, cashouts, configuracoesLocais])
+  }, [sessoesGraficosSelecionadas, cashouts, configuracoesLocais])
   const maiorResultadoGraficos = Math.max(1, ...dadosGraficosSessoes.map((sessao) => Math.abs(sessao.net)))
   const maiorResultadoLocalGraficos = Math.max(1, ...dadosGraficosLocais.map((local) => Math.abs(local.net)))
 
@@ -466,12 +542,19 @@ export function PokerScreen() {
     setCashoutDataAlvo(dataCartao)
     setCashoutMesBaseAlvo(mesBase)
 
-    // Identificar todos os locais da sessão, garantindo que MonteCarlo e H2 estejam disponíveis
+    // O modal mostra somente os locais que tiveram lançamentos nesta sessão.
     const valoresSalvos = obterCashoutPokerSessao(cashouts, dataCartao, mesBase) || {}
     const inputsIniciais: Record<string, string> = {}
 
-    const locaisOriginais = [...itensDaSessao.map((it) => it.local).filter(Boolean), ...locaisCadastrados, ...Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas')]
-    const locaisDaSessao = ordenarLocaisPorCadastro(locaisOriginais.map((nome) => nomeLocalCanonico(nome, configuracoesLocais)), configuracoesLocais)
+    const locaisDaSessao = ordenarLocaisPorCadastro(
+      Array.from(new Set(
+        itensDaSessao
+          .map((item) => item.local?.trim())
+          .filter((local): local is string => Boolean(local))
+          .map((local) => nomeLocalCanonico(local, configuracoesLocais))
+      )),
+      configuracoesLocais
+    )
     locaisDaSessao.forEach((loc) => {
       const nomesEquivalentes = Object.keys(valoresSalvos).filter((nome) => nome !== 'Total' && nome !== '__formas' && nomeLocalCanonico(nome, configuracoesLocais) === loc)
       const v = nomesEquivalentes.reduce((total, nome) => total + (Number(valoresSalvos[nome]) || 0), 0)
@@ -480,6 +563,7 @@ export function PokerScreen() {
     if (valoresSalvos.Total !== undefined) inputsIniciais.Total = Number(valoresSalvos.Total) > 0 ? String(valoresSalvos.Total) : ''
 
     setCashoutInputsPorLocal(inputsIniciais)
+    setCashoutValoresAnteriores({ ...inputsIniciais })
     setModalCashoutVisible(true)
   }
 
@@ -540,7 +624,7 @@ export function PokerScreen() {
   // ==========================================
   const abrirDropdown = (itemId: string, tipo: 'cartao' | 'local') => {
     const opcoes = tipo === 'cartao'
-      ? Array.from(new Set([...cartoesCredito.map((cartao) => cartao.nome), ...cartoesCadastrados]))
+      ? Array.from(new Set(cartoesCredito.map((cartao) => cartao.nome)))
       : locaisCadastrados
     setDropdownConfig({ itemId, tipo, opcoes })
     setNovoItemCadastroTexto('')
@@ -590,13 +674,7 @@ export function PokerScreen() {
     if (!novoItemCadastroTexto.trim() || !dropdownConfig) return
     const novo = novoItemCadastroTexto.trim()
 
-    if (dropdownConfig.tipo === 'cartao') {
-      if (!cartoesCadastrados.includes(novo)) {
-        const novosCartoes = [...cartoesCadastrados, novo]
-        setCartoesCadastrados(novosCartoes)
-        salvarCartoesPoker(novosCartoes)
-      }
-    } else {
+    if (dropdownConfig.tipo === 'local') {
       if (!locaisCadastrados.includes(novo)) {
         const novosLocais = [...locaisCadastrados, novo]
         setLocaisCadastrados(novosLocais)
@@ -615,10 +693,16 @@ export function PokerScreen() {
   // ==========================================
   // HANDLERS ENTRADAS (BUY-IN)
   // ==========================================
-  const abrirModalNovo = (dataSessaoSugerida?: string, mesBaseSugerido?: string, localSugerido?: string) => {
+  const selecionarCartaoFormulario = (nome: string) => {
+    setFormCartao(nome)
+    const cartao = cartoesCredito.find((item) => item.nome.toLowerCase() === nome.trim().toLowerCase())
+    if (cartao) setFormMesBase(sugerirMesFatura(cartao.dia_fechamento))
+  }
+
+  const abrirModalNovo = (dataSessaoSugerida?: string, localSugerido?: string) => {
     setItemEditando(null)
     setFormDropdownAberto(null)
-    const baseInicial = mesBaseSugerido ? normalizarMesBase(mesBaseSugerido) || mesBaseHojeKey() : mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro
+    const baseInicial = mesBaseHojeKey()
     const dataInicial = dataSessaoSugerida || dataPokerHoje()
     setFormMesBase(baseInicial)
     setFormDataCartao(dataInicial)
@@ -628,7 +712,7 @@ export function PokerScreen() {
     const localInicial = localSugerido || locaisCadastrados[0] || 'MonteCarlo'
     const configLocalInicial = configuracoesLocais.find((config) => config.nome.toLowerCase() === localInicial.toLowerCase())
     setFormLocal(localInicial)
-    setAlvoLancamento(dataSessaoSugerida ? { mesBase: baseInicial, dataCartao: dataInicial, local: localInicial } : null)
+    setAlvoLancamento(dataSessaoSugerida ? { dataCartao: dataInicial, local: localInicial } : null)
     setFormValor('')
     setAplicarTaxa(configLocalInicial?.aplica_taxa ?? true)
     setFormTaxa('')
@@ -636,8 +720,7 @@ export function PokerScreen() {
   }
 
   const abrirNovaSessao = () => {
-    const base = mesFiltro === 'Todos' ? mesBaseHojeKey() : mesFiltro
-    setFormMesBase(base)
+    setFormMesBase(mesBaseHojeKey())
     setFormDataCartao(dataPokerHoje())
     setFormLocal(locaisCadastrados[0] || 'MonteCarlo')
     setMesCalendario(mesBaseHojeKey())
@@ -647,7 +730,8 @@ export function PokerScreen() {
 
   const confirmarNovaSessao = async () => {
     try {
-      const sessao = await salvarSessaoPoker(formMesBase, formDataCartao, formLocal)
+      const mesSessao = chaveMesSessao(formDataCartao, mesBaseHojeKey())
+      const sessao = await salvarSessaoPoker(mesSessao, formDataCartao, formLocal)
       setSessoesSalvas((anteriores) => {
         const idx = anteriores.findIndex((s) => s.mes_base === sessao.mes_base && s.data_cartao === sessao.data_cartao)
         return idx < 0 ? [...anteriores, sessao] : anteriores.map((s, i) => i === idx ? sessao : s)
@@ -692,6 +776,12 @@ export function PokerScreen() {
           arquivoWeb: arquivo.file
         })
         setFotosPoker((anteriores) => [...anteriores, foto])
+        setMetadadosContagemFotos((anteriores) => [...anteriores, {
+          id: foto.id,
+          mes_base: foto.mes_base,
+          data_cartao: foto.data_cartao,
+          local: foto.local
+        }])
         enviadas += 1
       }
       if (enviadas > 0) notify('Fotos anexadas', `${enviadas} foto(s) adicionada(s) a ${local}.`)
@@ -699,6 +789,18 @@ export function PokerScreen() {
       notify('Não foi possível anexar as fotos', erro?.message || 'Verifique sua conexão e tente novamente.')
     } finally {
       setEnviandoFotosLocal(null)
+    }
+  }
+
+  const abrirFotoPoker = async (foto: FotoPoker) => {
+    setFotoVisualizando(foto)
+    if (foto.url) return
+    try {
+      const url = await carregarUrlOriginalFotoPoker(foto)
+      setFotoVisualizando((atual) => atual?.id === foto.id ? { ...atual, url } : atual)
+    } catch (erro: any) {
+      setFotoVisualizando((atual) => atual?.id === foto.id ? null : atual)
+      notify('Não foi possível abrir a foto', erro?.message || 'Verifique sua conexão e tente novamente.')
     }
   }
 
@@ -713,6 +815,7 @@ export function PokerScreen() {
     try {
       await excluirFotoPoker(foto)
       setFotosPoker((anteriores) => anteriores.filter((item) => item.id !== foto.id))
+      setMetadadosContagemFotos((anteriores) => anteriores.filter((item) => item.id !== foto.id))
       setFotoExcluirConfirmar(null)
       notify('Foto excluída', 'O anexo foi removido do Supabase Storage.')
     } catch (erro: any) {
@@ -733,7 +836,7 @@ export function PokerScreen() {
     setCalendarioAberto(false)
     setFormCartao(item.cartao_nome)
     setFormLocal(item.local)
-    setAlvoLancamento({ mesBase: item.mes_base, dataCartao: item.data_cartao, local: item.local })
+    setAlvoLancamento({ dataCartao: item.data_cartao, local: item.local })
     setFormValor(item.valor > 0 ? item.valor.toString().replace('.', ',') : '')
     const temTaxa = Number(item.taxa) > 0
     setAplicarTaxa(temTaxa)
@@ -799,7 +902,7 @@ export function PokerScreen() {
     const itemSalvo: LancamentoPoker = {
       id: itemEditando ? itemEditando.id : gerarUuidPoker(),
       ordem: itemEditando?.ordem ?? Math.floor(Date.now() / 1000),
-      mes_base: itemEditando?.mes_base || alvoLancamento?.mesBase || formMesBase.trim() || 'Novembro',
+      mes_base: formMesBase.trim() || mesBaseHojeKey(),
       data_cartao: itemEditando?.data_cartao || alvoLancamento?.dataCartao || formDataCartao.trim() || '31/out',
       cartao_nome: formCartao.trim(),
       local: itemEditando?.local || alvoLancamento?.local || formLocal.trim() || 'MonteCarlo',
@@ -865,11 +968,12 @@ export function PokerScreen() {
     }
     try {
       await excluirSessaoPokerService(dataCartao, mesBase)
-      setLancamentos((anteriores) => anteriores.filter((item) => item.data_cartao !== dataCartao || normalizarMesBase(item.mes_base) !== normalizarMesBase(mesBase)))
-      setSessoesSalvas((anteriores) => anteriores.filter((sessao) => sessao.data_cartao !== dataCartao || normalizarMesBase(sessao.mes_base) !== normalizarMesBase(mesBase)))
+      const dataAlvoCanonica = dataSessaoCanonica(dataCartao, mesBase)
+      setLancamentos((anteriores) => anteriores.filter((item) => dataSessaoCanonica(item.data_cartao, item.mes_base) !== dataAlvoCanonica))
+      setSessoesSalvas((anteriores) => anteriores.filter((sessao) => dataSessaoCanonica(sessao.data_cartao, sessao.mes_base) !== dataAlvoCanonica))
       setCashouts((anteriores) => {
         const novos = { ...anteriores }
-        delete novos[dataCartao]
+        Object.keys(novos).filter((key) => key === dataCartao || key.endsWith(`|${dataCartao}`)).forEach((key) => delete novos[key])
         return novos
       })
       notify('Sessão excluída', 'Os lançamentos e o cash out deste dia foram removidos.')
@@ -885,8 +989,9 @@ export function PokerScreen() {
     }
     try {
       await excluirLocalSessaoPokerService(alvo.mesBase, alvo.dataCartao, alvo.local)
-      setLancamentos((anteriores) => anteriores.filter((item) => item.data_cartao !== alvo.dataCartao || item.mes_base !== alvo.mesBase || item.local !== alvo.local))
-      setSessoesSalvas((anteriores) => anteriores.map((sessao) => sessao.data_cartao === alvo.dataCartao && sessao.mes_base === alvo.mesBase
+      const dataAlvoCanonica = dataSessaoCanonica(alvo.dataCartao, alvo.mesBase)
+      setLancamentos((anteriores) => anteriores.filter((item) => dataSessaoCanonica(item.data_cartao, item.mes_base) !== dataAlvoCanonica || item.local !== alvo.local))
+      setSessoesSalvas((anteriores) => anteriores.map((sessao) => dataSessaoCanonica(sessao.data_cartao, sessao.mes_base) === dataAlvoCanonica
         ? { ...sessao, locais: sessao.locais.filter((local) => local !== alvo.local) }
         : sessao))
       setCashouts(carregarCashoutsPoker())
@@ -951,9 +1056,33 @@ export function PokerScreen() {
         </View>}
 
         {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
+          <View style={styles.graphFilterArea}>
+            <Text style={styles.inputLabel}>Mês dos gráficos</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ expanded: filtroMesGraficoAberto }}
+              style={styles.filterMonthButton}
+              onPress={() => setFiltroMesGraficoAberto((aberto) => !aberto)}
+            >
+              <Ionicons name="calendar-outline" size={17} color={colors.primary} />
+              <Text style={styles.filterMonthButtonText}>
+                {mesGraficoFiltro === 'Todos' ? 'Todos os meses' : rotuloMesBase(mesGraficoFiltro)}
+              </Text>
+              <Ionicons name={filtroMesGraficoAberto ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+            </TouchableOpacity>
+            {filtroMesGraficoAberto && <ScrollView nestedScrollEnabled style={styles.monthOptionsList}>
+              {opcoesFiltroMesGrafico.map((opcao) => <TouchableOpacity
+                key={opcao.valor}
+                style={styles.formDropdownOption}
+                onPress={() => { setMesGraficoFiltro(opcao.valor); setFiltroMesGraficoAberto(false) }}
+              >
+                <Text style={styles.formDropdownOptionText}>{opcao.label}</Text>
+              </TouchableOpacity>)}
+            </ScrollView>}
+          </View>
           <View style={styles.graphCard}>
             <Text style={styles.graphTitle}>Sessões por mês</Text>
-            {dadosGraficosMensais.length === 0 ? <Text style={styles.graphEmpty}>Sem dados para exibir.</Text> : dadosGraficosMensais.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
+            {dadosGraficosMensaisSelecionados.length === 0 ? <Text style={styles.graphEmpty}>Sem sessões no período selecionado.</Text> : dadosGraficosMensaisSelecionados.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
               <Text numberOfLines={1} style={styles.graphMonthlySessionLabel}>{mes.label}</Text>
               <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(3, (mes.quantidade / maiorContagemSessoesMes) * 100)}%`, backgroundColor: '#0284C7' }]} /></View>
               <Text style={styles.graphMonthlySessionCount}>{mes.quantidade}</Text>
@@ -966,7 +1095,7 @@ export function PokerScreen() {
               <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#15803D' }]} /><Text style={styles.graphLegendText}>Lucro</Text></View>
               <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#DC2626' }]} /><Text style={styles.graphLegendText}>Prejuízo</Text></View>
             </View>
-            {dadosGraficosMensais.length === 0 ? <Text style={styles.graphEmpty}>Sem dados para exibir.</Text> : dadosGraficosMensais.map((mes, index) => {
+            {dadosGraficosMensaisSelecionados.length === 0 ? <Text style={styles.graphEmpty}>Sem dados no período selecionado.</Text> : dadosGraficosMensaisSelecionados.map((mes, index) => {
               const buyInWidth = mes.buyIn > 0 ? Math.max(2, Math.min(100, (mes.buyIn / maiorFluxoMensal) * 100)) : 0
               const lucroWidth = mes.lucro > 0 ? Math.max(2, Math.min(100 - buyInWidth, (mes.lucro / maiorFluxoMensal) * 100)) : 0
               const prejuizoWidth = mes.lucro < 0 ? Math.max(2, Math.min(100 - buyInWidth, (Math.abs(mes.lucro) / maiorFluxoMensal) * 100)) : 0
@@ -993,14 +1122,16 @@ export function PokerScreen() {
               </View>
             })}
           </View>
-          {dadosGraficosLocais.length > 0 && <View style={styles.graphCard}>
+          <View style={styles.graphCard}>
             <Text style={styles.graphTitle}>Resultado por clube</Text>
-            {dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
+            {dadosGraficosLocais.length === 0
+              ? <Text style={styles.graphEmpty}>Sem dados no período selecionado.</Text>
+              : dadosGraficosLocais.slice(0, 8).map((local, index) => <View key={local.local} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
               <Text numberOfLines={1} style={styles.graphClubName}>{local.local}</Text>
               <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(local.net) / maiorResultadoLocalGraficos) * 100)}%`, backgroundColor: local.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
               <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
             </View>)}
-          </View>}
+          </View>
           <View style={styles.graphCard}>
             <Text style={styles.graphTitle}>Resultado por sessão</Text>
             <View style={styles.graphSortControls}>
@@ -1009,6 +1140,7 @@ export function PokerScreen() {
                 ['resultado_desc', 'Resultado ↓'], ['resultado_asc', 'Resultado ↑']
               ] as const).map(([valor, rotulo]) => <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: ordenacaoResultadoGrafico === valor }} onPress={() => setOrdenacaoResultadoGrafico(valor)} style={[styles.graphSortButton, ordenacaoResultadoGrafico === valor && styles.graphSortButtonActive]}><Text style={[styles.graphSortText, ordenacaoResultadoGrafico === valor && styles.graphSortTextActive]}>{rotulo}</Text></TouchableOpacity>)}
             </View>
+            {dadosResultadoOrdenados.length === 0 && <Text style={styles.graphEmpty}>Sem sessões no período selecionado.</Text>}
             {dadosResultadoOrdenados.map((sessao, index) => <View key={`${sessao.mesBase}|${sessao.data}`} style={[styles.graphResultRow, index === 0 && { borderTopWidth: 0 }]}>
               <Text style={styles.graphDate}>{formatarDataPokerCurta(sessao.data, sessao.mesBase).replace(/\/\d{2}$/, '')}</Text>
               <View style={styles.graphResultTrack}><View style={[styles.graphResultBar, { width: `${Math.max(2, (Math.abs(sessao.net) / maiorResultadoGraficos) * 100)}%`, backgroundColor: sessao.net >= 0 ? '#15803D' : '#DC2626' }]} /></View>
@@ -1026,7 +1158,7 @@ export function PokerScreen() {
         {/* Filtro por ano e mês base */}
         {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && <>
         <View style={styles.filtrosRow}>
-          <Text style={styles.inputLabel}>Mês base</Text>
+          <Text style={styles.inputLabel}>Mês da sessão</Text>
           <TouchableOpacity style={styles.filterMonthButton} onPress={() => setFiltroMesAberto((aberto) => !aberto)}>
             <Ionicons name="calendar-outline" size={17} color={colors.primary} />
             <Text style={styles.filterMonthButtonText}>{mesFiltro === 'Todos' ? 'Todos os meses' : rotuloMesBase(mesFiltro)}</Text>
@@ -1061,6 +1193,7 @@ export function PokerScreen() {
           const corNetSessao = netSessao >= 0 ? '#15803D' : '#DC2626'
           const locaisPresentes = new Set(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)))
           const locaisDisponiveis = locaisCadastrados.filter((local) => !locaisPresentes.has(nomeLocalCanonico(local, configuracoesLocais)))
+          const chaveAdicionarLocal = `${mesBaseSessao}|${dataSessao}`
           const locaisSessaoVisiveis = ordenarLocaisPorCadastro(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)), configuracoesLocais)
 
           return (
@@ -1139,7 +1272,9 @@ export function PokerScreen() {
                 const taxaLocal = itensLocal.reduce((total, item) => total + (Number(item.taxa) || 0), 0)
                 const cashoutLocal = chavesCashoutLocais.filter((nome) => nomeLocalCanonico(nome, configuracoesLocais) === local).reduce((total, nome) => total + (Number(cashoutsDoDia[nome]) || 0), 0)
                 const netLocal = cashoutLocal - buyInLocal - taxaLocal
-                const fotosLocal = fotosPoker.filter((foto) => normalizarMesBase(foto.mes_base) === normalizarMesBase(mesBaseSessao) && foto.data_cartao === dataSessao && nomeLocalCanonico(foto.local, configuracoesLocais) === local)
+                const fotosLocal = fotosPoker.filter((foto) => foto.data_cartao === dataSessao && nomeLocalCanonico(foto.local, configuracoesLocais) === local)
+                const quantidadeFotosLocal = metadadosContagemFotos.filter((foto) => foto.data_cartao === dataSessao && nomeLocalCanonico(foto.local, configuracoesLocais) === local).length
+                const corAcaoFotos = quantidadeFotosLocal > 0 ? colors.primary : colors.muted
                 const chaveFotosLocal = `${mesBaseSessao}|${dataSessao}|${local}`
                 const configLocal = configuracoesLocais.find((item) => item.nome.toLowerCase() === local.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === local.toLowerCase()))
                 const corDoLocal = configLocal?.cor || (local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569')
@@ -1164,7 +1299,7 @@ export function PokerScreen() {
                       </View>}
                     </View>
                     {!diaTravado && visualizacaoSessoes === 'detalhado' && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 8 }}>
-                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => abrirModalNovo(dataSessao, mesBaseSessao, local)}>
+                      <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Novo lançamento em ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }} onPress={() => abrirModalNovo(dataSessao, local)}>
                         <Ionicons name="add" size={23} color={corDoLocal} />
                       </TouchableOpacity>
                       <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir local ${local}`} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' }} onPress={() => setLocalSessaoExcluirConfirmar({ dataCartao: dataSessao, mesBase: mesBaseSessao, local, itens: itensLocal })}>
@@ -1184,31 +1319,83 @@ export function PokerScreen() {
                     </View>)}
                     {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
                   </View>}
-                  {visualizacaoSessoes === 'detalhado' && (fotosLocal.length > 0 || !diaTravado) && <View style={{ paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 8 }}>
-                    {fotosLocal.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                      {fotosLocal.map((foto) => <View key={foto.id} style={{ width: 72, height: 72 }}>
-                        <TouchableOpacity accessibilityRole="imagebutton" accessibilityLabel={`Visualizar ${foto.nome_arquivo}`} onPress={() => setFotoVisualizando(foto)}>
-                          <Image source={{ uri: foto.url }} style={{ width: 72, height: 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
-                        </TouchableOpacity>
-                        {!diaTravado && visualizacaoSessoes === 'detalhado' && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
-                          <Ionicons name="close" size={16} color="#fff" />
-                        </TouchableOpacity>}
-                      </View>)}
-                    </ScrollView>}
-                    {!diaTravado && visualizacaoSessoes === 'detalhado' && <TouchableOpacity disabled={enviandoFotosLocal === chaveFotosLocal} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 9, backgroundColor: '#F1F5F9', opacity: enviandoFotosLocal === chaveFotosLocal ? 0.6 : 1 }} onPress={() => void anexarFotosLocal(mesBaseSessao, dataSessao, local)}>
-                      <Ionicons name={enviandoFotosLocal === chaveFotosLocal ? 'cloud-upload-outline' : 'images-outline'} size={17} color={colors.primary} />
-                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{enviandoFotosLocal === chaveFotosLocal ? 'Enviando fotos…' : 'Anexar fotos'}</Text>
-                    </TouchableOpacity>}
+                  {visualizacaoSessoes === 'detalhado' && <View style={{ paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#E2E8F0' }}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: Boolean(menusFotosAbertos[chaveFotosLocal]) }}
+                      accessibilityLabel={`${menusFotosAbertos[chaveFotosLocal] ? 'Recolher' : 'Expandir'} fotos de ${local}`}
+                      onPress={() => void alternarMenuFotos(mesBaseSessao, dataSessao, local, [local, ...(configLocal?.aliases || [])])}
+                      style={{ minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7 }}
+                    >
+                      <Ionicons name="images-outline" size={17} color={corAcaoFotos} />
+                      <Text style={{ color: corAcaoFotos, fontWeight: '700', fontSize: 12, flex: 1 }}>
+                        Fotos ({quantidadeFotosLocal})
+                      </Text>
+                      {fotosCarregando[chaveFotosLocal]
+                        ? <ActivityIndicator size="small" color={colors.primary} />
+                        : <Ionicons name={menusFotosAbertos[chaveFotosLocal] ? 'chevron-up' : 'chevron-down'} size={17} color={corAcaoFotos} />}
+                    </TouchableOpacity>
+                    {menusFotosAbertos[chaveFotosLocal] && <View style={{ paddingTop: 8, gap: 8 }}>
+                      {fotosCarregando[chaveFotosLocal]
+                        ? <Text style={{ color: colors.muted, fontSize: 12 }}>Carregando fotos…</Text>
+                        : <>
+                          {fotosLocal.length > 0
+                            ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                              {fotosLocal.map((foto) => <View key={foto.id} style={{ width: 72, height: 72 }}>
+                                <TouchableOpacity accessibilityRole="imagebutton" accessibilityLabel={`Visualizar ${foto.nome_arquivo}`} onPress={() => void abrirFotoPoker(foto)}>
+                                  <Image source={{ uri: foto.thumbnailUrl }} style={{ width: 72, height: 72, borderRadius: 9, backgroundColor: '#E2E8F0' }} />
+                                </TouchableOpacity>
+                                {!diaTravado && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Excluir foto ${foto.nome_arquivo}`} onPress={() => setFotoExcluirConfirmar(foto)} style={{ position: 'absolute', top: 3, right: 3, width: 23, height: 23, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.82)', justifyContent: 'center', alignItems: 'center' }}>
+                                  <Ionicons name="close" size={16} color="#fff" />
+                                </TouchableOpacity>}
+                              </View>)}
+                            </ScrollView>
+                            : <Text style={{ color: colors.muted, fontSize: 12 }}>Nenhuma foto anexada.</Text>}
+                          {!diaTravado && <TouchableOpacity disabled={enviandoFotosLocal === chaveFotosLocal} style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 9, backgroundColor: '#F1F5F9', opacity: enviandoFotosLocal === chaveFotosLocal ? 0.6 : 1 }} onPress={() => void anexarFotosLocal(mesBaseSessao, dataSessao, local)}>
+                            <Ionicons name={enviandoFotosLocal === chaveFotosLocal ? 'cloud-upload-outline' : 'images-outline'} size={17} color={colors.primary} />
+                            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12 }}>{enviandoFotosLocal === chaveFotosLocal ? 'Enviando fotos…' : 'Anexar fotos'}</Text>
+                          </TouchableOpacity>}
+                        </>}
+                    </View>}
                   </View>}
                 </View>
               })}
-              {!diaTravado && visualizacaoSessoes === 'detalhado' && <View style={styles.sessaoBottomBar}>
-                <Text style={styles.inputLabel}>Adicionar outro local</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {locaisDisponiveis.length > 0 ? locaisDisponiveis.map((local) => <TouchableOpacity key={local} disabled={diaTravado} style={styles.btnAdicionarNaSessao} onPress={() => void adicionarLocalSessao(mesBaseSessao, dataSessao, local)}><Ionicons name="add" size={15} color={colors.primary} /><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>) : <Text style={{ color: colors.muted, fontSize: 12 }}>Todos os locais cadastrados já estão nesta sessão.</Text>}
-                </View>
-              </View>}
-              {!diaTravado && <View style={{ alignItems: 'flex-end', paddingHorizontal: 12, paddingVertical: 8 }}>
+              {!diaTravado && <View style={styles.sessaoBottomBar}>
+                {visualizacaoSessoes === 'detalhado' && <View style={styles.addLocalMenuArea}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: menuAdicionarLocalAberto === chaveAdicionarLocal, disabled: locaisDisponiveis.length === 0 }}
+                    accessibilityLabel="Add. Local"
+                    disabled={locaisDisponiveis.length === 0}
+                    style={[styles.addLocalMenuButton, locaisDisponiveis.length === 0 && styles.addLocalMenuButtonDisabled]}
+                    onPress={() => setMenuAdicionarLocalAberto((atual) => atual === chaveAdicionarLocal ? null : chaveAdicionarLocal)}
+                  >
+                    <Ionicons name="add-circle-outline" size={17} color={locaisDisponiveis.length ? colors.primary : colors.muted} />
+                    <Text style={[styles.btnAdicionarNaSessaoTexto, locaisDisponiveis.length === 0 && { color: colors.muted }]}>Add. Local</Text>
+                    <Ionicons name={menuAdicionarLocalAberto === chaveAdicionarLocal ? 'chevron-up' : 'chevron-down'} size={16} color={locaisDisponiveis.length ? colors.primary : colors.muted} />
+                  </TouchableOpacity>
+                  {menuAdicionarLocalAberto === chaveAdicionarLocal && <View style={styles.addLocalOptionsBox}>
+                    {locaisDisponiveis.map((local) => {
+                      const configLocal = configuracoesLocais.find((config) => config.nome.toLowerCase() === local.toLowerCase() || config.aliases?.some((alias) => alias.toLowerCase() === local.toLowerCase()))
+                      const logoLocal = configLocal?.fotoUrl ? { uri: configLocal.fotoUrl } : LOGOS_CLUBES[local.toLowerCase()]
+                      const corLocal = configLocal?.cor || (local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569')
+                      return <TouchableOpacity
+                        key={local}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Adicionar ${configLocal?.nome || local} à sessão`}
+                        style={[styles.addLocalOptionTile, { borderColor: corLocal, backgroundColor: corLocal }]}
+                        onPress={() => {
+                          setMenuAdicionarLocalAberto(null)
+                          void adicionarLocalSessao(mesBaseSessao, dataSessao, local)
+                        }}
+                      >
+                        {logoLocal
+                          ? <Image accessibilityLabel={`Logo ${configLocal?.nome || local}`} source={logoLocal} resizeMode="contain" style={styles.addLocalOptionLogo} />
+                          : <View style={[styles.addLocalOptionFallback, { backgroundColor: corLocal }]}><Ionicons name="location" size={26} color="#fff" /></View>}
+                      </TouchableOpacity>
+                    })}
+                  </View>}
+                </View>}
                 <TouchableOpacity
                   accessibilityRole="button"
                   accessibilityLabel={`Excluir a sessão ${formatarDataPoker(dataSessao, mesBaseSessao)}`}
@@ -1232,7 +1419,9 @@ export function PokerScreen() {
       <Modal visible={Boolean(fotoVisualizando)} transparent animationType="fade" onRequestClose={() => setFotoVisualizando(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.96)', justifyContent: 'center', alignItems: 'center', padding: 18 }}>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar foto" onPress={() => setFotoVisualizando(null)} style={{ alignSelf: 'flex-end', padding: 10, marginBottom: 8 }}><Ionicons name="close" size={28} color="#fff" /></TouchableOpacity>
-          {fotoVisualizando && <Image source={{ uri: fotoVisualizando.url }} resizeMode="contain" style={{ width: '100%', height: '82%' }} />}
+          {fotoVisualizando?.url
+            ? <Image source={{ uri: fotoVisualizando.url }} resizeMode="contain" style={{ width: '100%', height: '82%' }} />
+            : <ActivityIndicator size="large" color="#fff" style={{ height: '82%' }} />}
           <Text numberOfLines={1} style={{ color: '#fff', marginTop: 10 }}>{fotoVisualizando?.nome_arquivo}</Text>
         </View>
       </Modal>
@@ -1256,12 +1445,10 @@ export function PokerScreen() {
       <Modal visible={modalNovaSessaoVisible} transparent animationType="fade" onRequestClose={() => setModalNovaSessaoVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeader}><View><Text style={styles.modalTitulo}>Nova sessão</Text><Text style={styles.modalSub}>Defina o mês da fatura, a data e o primeiro local.</Text></View><TouchableOpacity onPress={() => setModalNovaSessaoVisible(false)}><Ionicons name="close" size={22} color={colors.muted} /></TouchableOpacity></View>
+            <View style={styles.modalHeader}><View><Text style={styles.modalTitulo}>Nova sessão</Text><Text style={styles.modalSub}>Defina a data da sessão e o primeiro local.</Text></View><TouchableOpacity onPress={() => setModalNovaSessaoVisible(false)}><Ionicons name="close" size={22} color={colors.muted} /></TouchableOpacity></View>
             <ScrollView>
-              <Text style={styles.inputLabel}>Mês Fatura</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={[styles.btnAdicionarNaSessao, formMesBase === opcao.valor && { backgroundColor: '#DCFCE7' }]} onPress={() => setFormMesBase(opcao.valor)}><Text style={styles.btnAdicionarNaSessaoTexto}>{opcao.label}</Text></TouchableOpacity>)}</View>
-              <Text style={styles.inputLabel}>Data Lançamento</Text>
-              <TouchableOpacity style={styles.formMonthButton} onPress={() => { setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase)); setCalendarioAberto(!calendarioAberto) }}><Text style={styles.formMonthButtonText}>{formDataCartao}</Text><Ionicons name="calendar-outline" size={16} color={colors.primary} /></TouchableOpacity>
+              <Text style={styles.inputLabel}>Data da sessão</Text>
+              <TouchableOpacity style={styles.formMonthButton} onPress={() => { setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase)); setCalendarioAberto(!calendarioAberto) }}><Text style={styles.formMonthButtonText}>{formatarDataPoker(formDataCartao, formMesBase)}</Text><Ionicons name="calendar-outline" size={16} color={colors.primary} /></TouchableOpacity>
               {calendarioAberto && <View style={styles.calendarPanel}><View style={styles.calendarHeader}><TouchableOpacity style={styles.calendarNavButton} onPress={() => setMesCalendario((mes) => deslocarMes(mes, -1))}><Ionicons name="chevron-back" size={18} color={colors.primary} /></TouchableOpacity><Text style={styles.calendarMonthTitle}>{rotuloMesBase(mesCalendario)}</Text><TouchableOpacity style={styles.calendarNavButton} onPress={() => setMesCalendario((mes) => deslocarMes(mes, 1))}><Ionicons name="chevron-forward" size={18} color={colors.primary} /></TouchableOpacity></View><View style={styles.calendarGrid}>{['D','S','T','Q','Q','S','S'].map((d,i)=><Text key={`weekday-${i}`} style={styles.calendarWeekday}>{d}</Text>)}{diasCalendario.map((dia,i)=>!dia?<View key={`empty-${i}`} style={styles.calendarDayEmpty}/>:<TouchableOpacity key={dia} style={[styles.calendarDayButton, formDataCartao===dataCartaoSelecionada(dia,mesCalendario)&&styles.calendarDayButtonSelected]} onPress={()=>{setFormDataCartao(dataCartaoSelecionada(dia,mesCalendario));setCalendarioAberto(false)}}><Text style={styles.calendarDayText}>{dia}</Text></TouchableOpacity>)}</View><TouchableOpacity style={styles.calendarTodayButton} onPress={()=>{setFormDataCartao(dataPokerHoje());setMesCalendario(mesBaseHojeKey());setCalendarioAberto(false)}}><Text style={styles.calendarTodayButtonText}>Voltar para hoje</Text></TouchableOpacity></View>}
               <Text style={[styles.inputLabel, { marginTop: 14 }]}>Local</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{locaisCadastrados.map((local) => <TouchableOpacity key={local} style={[styles.btnAdicionarNaSessao, formLocal === local && { backgroundColor: '#DCFCE7' }]} onPress={() => setFormLocal(local)}><Text style={styles.btnAdicionarNaSessaoTexto}>{local}</Text></TouchableOpacity>)}</View>
@@ -1276,7 +1463,7 @@ export function PokerScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, styles.cashoutModalCard]}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitulo}>Cashout ({formatarDataPokerCurta(cashoutDataAlvo, cashoutMesBaseAlvo)})</Text>
@@ -1292,16 +1479,27 @@ export function PokerScreen() {
                 <View key={localNome} style={styles.localCashoutItemRow}>
                   <View style={styles.localCashoutLabelCol}>
                     <View style={styles.localDot} />
-                    <Text style={styles.localCashoutLabelText}>{configuracoesLocais.find((config) => config.nome.toLowerCase() === localNome.toLowerCase() || config.aliases?.some((alias) => alias.toLowerCase() === localNome.toLowerCase()))?.nome || localNome}</Text>
+                    <Text numberOfLines={1} style={styles.localCashoutLabelText}>{configuracoesLocais.find((config) => config.nome.toLowerCase() === localNome.toLowerCase() || config.aliases?.some((alias) => alias.toLowerCase() === localNome.toLowerCase()))?.nome || localNome}</Text>
                   </View>
 
-                  <TextInput
-                    style={[styles.input, styles.inputCashoutLocal]}
-                    placeholder="0,00"
-                    keyboardType="numeric"
-                    value={cashoutInputsPorLocal[localNome]}
-                    onChangeText={(v) => handleAlterarInputLocal(localNome, v)}
-                  />
+                  <View style={styles.cashoutInputActions}>
+                    <TextInput
+                      style={[styles.input, styles.inputCashoutLocal, { flex: 1, width: 0, minWidth: 0 }]}
+                      placeholder={cashoutValoresAnteriores[localNome] || '0,00'}
+                      placeholderTextColor="#C4A85A"
+                      keyboardType="numeric"
+                      value={cashoutInputsPorLocal[localNome]}
+                      onChangeText={(v) => handleAlterarInputLocal(localNome, v)}
+                    />
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`Apagar valor de cashout de ${localNome}`}
+                      style={styles.cashoutClearButton}
+                      onPress={() => handleAlterarInputLocal(localNome, '')}
+                    >
+                      <Ionicons name="backspace-outline" size={20} color="#92400E" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -1376,7 +1574,7 @@ export function PokerScreen() {
             </ScrollView>
 
             <View style={styles.novoCadastroSection}>
-              <Text style={styles.inputLabel}>Cadastrar novo:</Text>
+              <Text style={styles.inputLabel}>{dropdownConfig?.tipo === 'cartao' ? 'Usar este cartão neste lançamento:' : 'Cadastrar novo local:'}</Text>
               <View style={styles.novoCadastroRow}>
                 <TextInput
                   style={[styles.input, { flex: 1 }]}
@@ -1413,18 +1611,7 @@ export function PokerScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {(!alvoLancamento && !itemEditando) && <>
-              <View style={styles.formRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Mês Base:</Text>
-                  <TouchableOpacity style={styles.formMonthButton} onPress={() => setFormDropdownAberto((aberto) => aberto === 'mesBase' ? null : 'mesBase')}>
-                    <Text numberOfLines={1} style={styles.formMonthButtonText}>{rotuloMesBase(formMesBase)}</Text>
-                    <Ionicons name={formDropdownAberto === 'mesBase' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} />
-                  </TouchableOpacity>
-                  {formDropdownAberto === 'mesBase' && <ScrollView nestedScrollEnabled style={styles.monthOptionsList}>{opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={styles.formDropdownOption} onPress={() => { setFormMesBase(opcao.valor); setFormDropdownAberto(null) }}><Text style={styles.formDropdownOptionText}>{opcao.label}</Text></TouchableOpacity>)}</ScrollView>}
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Data Cartão:</Text>
+                <Text style={styles.inputLabel}>Data da sessão</Text>
                   <TouchableOpacity style={styles.formMonthButton} onPress={() => {
                     setMesCalendario(chaveMesDaDataCartao(formDataCartao, formMesBase))
                     setCalendarioAberto((aberto) => !aberto)
@@ -1432,8 +1619,6 @@ export function PokerScreen() {
                     <Text numberOfLines={1} style={styles.formMonthButtonText}>{formatarDataPoker(formDataCartao, formMesBase)}</Text>
                     <Ionicons name="calendar-outline" size={16} color={colors.primary} />
                   </TouchableOpacity>
-                </View>
-              </View>
 
               {calendarioAberto && <View style={styles.calendarPanel}>
                 <View style={styles.calendarHeader}>
@@ -1453,16 +1638,23 @@ export function PokerScreen() {
               </View>}
               </>}
 
+              <View style={{ marginBottom: 12 }}>
+                <Text style={styles.inputLabel}>Mês da fatura</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {opcoesMesBase.map((opcao) => <TouchableOpacity key={opcao.valor} style={[styles.btnAdicionarNaSessao, formMesBase === opcao.valor && { backgroundColor: '#DCFCE7' }]} onPress={() => setFormMesBase(opcao.valor)}><Text style={[styles.btnAdicionarNaSessaoTexto, styles.invoiceMonthOptionText]}>{opcao.label}</Text></TouchableOpacity>)}
+                </View>
+              </View>
+
               <View style={styles.formRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.inputLabel}>Cartão:</Text>
                   <View style={styles.formPickerRow}>
-                    <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do cartão" value={formCartao} onChangeText={setFormCartao} />
+                    <TextInput style={[styles.input, styles.formPickerInput]} placeholder="Nome do cartão" value={formCartao} onChangeText={selecionarCartaoFormulario} />
                     <TouchableOpacity style={styles.formPickerButton} accessibilityLabel="Escolher cartão cadastrado" onPress={() => abrirDropdownFormulario('cartao')}><Ionicons name={formDropdownAberto === 'cartao' ? 'chevron-up' : 'chevron-down'} size={16} color={colors.primary} /></TouchableOpacity>
                   </View>
                   {formDropdownAberto === 'cartao' && (
                     <ScrollView nestedScrollEnabled style={styles.formDropdownOptions}>
-                      <TouchableOpacity style={styles.formDropdownOption} onPress={() => { setFormCartao(''); setFormDropdownAberto(null) }}>
+                      <TouchableOpacity style={styles.formDropdownOption} onPress={() => { selecionarCartaoFormulario(''); setFormDropdownAberto(null) }}>
                         <Text style={styles.formDropdownOptionText}>Nenhum cartão</Text>
                       </TouchableOpacity>
                       {cartoesCredito.map((cartao) => (
@@ -1471,7 +1663,7 @@ export function PokerScreen() {
                           accessibilityRole="button"
                           accessibilityLabel={`Selecionar cartão ${cartao.nome}`}
                           style={[styles.pokerCartaoOption, { backgroundColor: cartao.cor || colors.primary }]}
-                          onPress={() => { setFormCartao(cartao.nome); setFormDropdownAberto(null) }}
+                          onPress={() => { selecionarCartaoFormulario(cartao.nome); setFormDropdownAberto(null) }}
                         >
                           <View style={styles.pokerCartaoOrb} />
                           <View style={styles.pokerCartaoOptionTop}>
@@ -1487,13 +1679,7 @@ export function PokerScreen() {
                           </View>
                         </TouchableOpacity>
                       ))}
-                      {cartoesCadastrados.filter((nome) => !cartoesCredito.some((cartao) => cartao.nome === nome)).map((nome) => (
-                        <TouchableOpacity key={nome} style={styles.formDropdownOption} onPress={() => { setFormCartao(nome); setFormDropdownAberto(null) }}>
-                          <Text style={styles.formDropdownOptionText}>{nome}</Text>
-                          {formCartao === nome && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
-                        </TouchableOpacity>
-                      ))}
-                      {cartoesCredito.length === 0 && cartoesCadastrados.length === 0 && <Text style={styles.pokerCartaoEmpty}>Cadastre um cartão em Cadastro Cartões para selecioná-lo aqui.</Text>}
+                      {cartoesCredito.length === 0 && <Text style={styles.pokerCartaoEmpty}>Nenhum cartão ativo. Você também pode informar um nome manualmente.</Text>}
                     </ScrollView>
                   )}
                 </View>
@@ -2227,9 +2413,65 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#F8FAFC',
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    gap: 10,
+    justifyContent: 'space-between',
     borderTopWidth: 1,
     borderTopColor: colors.border
+  },
+  addLocalMenuArea: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-start',
+    gap: 8
+  },
+  addLocalMenuButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4'
+  },
+  addLocalMenuButtonDisabled: {
+    borderColor: colors.border,
+    backgroundColor: '#F1F5F9'
+  },
+  addLocalOptionsBox: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    backgroundColor: colors.surface
+  },
+  addLocalOptionTile: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 7,
+    borderWidth: 1,
+    borderRadius: 10,
+    backgroundColor: '#fff'
+  },
+  addLocalOptionLogo: {
+    width: '100%',
+    height: '100%'
+  },
+  addLocalOptionFallback: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   btnAdicionarNaSessao: {
     flexDirection: 'row',
@@ -2240,6 +2482,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.primary
+  },
+  invoiceMonthOptionText: {
+    fontSize: 14
   },
   emptyContainer: {
     padding: 24,
@@ -2268,6 +2513,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6
   },
+  cashoutModalCard: {
+    minWidth: 0,
+    padding: 16
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2287,7 +2536,8 @@ const styles = StyleSheet.create({
   localCashoutItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    width: '100%',
+    gap: 8,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.border
@@ -2296,7 +2546,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    flex: 1
+    flex: 1,
+    minWidth: 0,
+    marginRight: 0
   },
   localDot: {
     width: 8,
@@ -2307,19 +2559,38 @@ const styles = StyleSheet.create({
   localCashoutLabelText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.text
+    color: colors.text,
+    flexShrink: 1
   },
   inputCashoutLocal: {
-    width: 100,
     backgroundColor: '#FEF08A',
     borderColor: '#FACC15',
     fontWeight: '800',
     color: '#713F12',
     textAlign: 'right'
   },
+  cashoutInputActions: {
+    width: 118,
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5
+  },
+  cashoutClearButton: {
+    width: 34,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#FEF3C7'
+  },
   graphScreen: {
     gap: 12,
     marginBottom: 14
+  },
+  graphFilterArea: {
+    gap: 4,
+    zIndex: 2
   },
   graphCard: {
     backgroundColor: colors.surface,

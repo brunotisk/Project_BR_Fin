@@ -107,7 +107,16 @@ function TabNavigatorContent() {
     }}>
       <Tab.Screen name="TodoTab" component={SwipeTodo} listeners={listeners('todo')} options={{ tabBarLabel: 'Todo List', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'checkbox' : 'checkbox-outline'} size={size} color={acesso.todo ? color : '#94A3B8'} />{!acesso.todo && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
       <Tab.Screen name="AgendaTab" component={SwipeAgenda} listeners={listeners('agenda')} options={{ tabBarLabel: 'Agenda', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={size} color={acesso.agenda ? color : '#94A3B8'} />{!acesso.agenda && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
-      <Tab.Screen name="FinanceiroTab" component={SwipeFinanceiro} listeners={listeners('financeiro')} options={{ tabBarLabel: 'Financeiro', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={size} color={acesso.financeiro ? color : '#94A3B8'} />{!acesso.financeiro && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
+      <Tab.Screen name="FinanceiroTab" component={SwipeFinanceiro} listeners={({ navigation }) => ({
+        tabPress: (event) => {
+          if (!acesso.financeiro) {
+            event.preventDefault()
+            notify('Tela desativada', 'Habilite este módulo em Configurações para acessá-lo.')
+            return
+          }
+          ;(navigation as any).navigate('FinanceiroTab', { screen: 'PokerTab' })
+        }
+      })} options={{ tabBarLabel: 'Financeiro', tabBarIcon: ({ color, size, focused }) => <View style={{ width: size + 4, height: size + 4 }}><Ionicons name={focused ? 'wallet' : 'wallet-outline'} size={size} color={acesso.financeiro ? color : '#94A3B8'} />{!acesso.financeiro && <Ionicons name="lock-closed" size={10} color="#94A3B8" style={{ position: 'absolute', right: -4, bottom: -2 }} />}</View> }} />
       <Tab.Screen name="ConfiguracoesTab" component={SwipeConfiguracoes} options={{ tabBarLabel: 'Config.', tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} /> }} />
     </Tab.Navigator>
   )

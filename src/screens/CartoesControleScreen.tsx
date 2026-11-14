@@ -130,6 +130,9 @@ export function CartoesControleScreen() {
   const [valoresEntradaSimulador, setValoresEntradaSimulador] = useState<ValoresEntradaSimulador>({
     valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: ''
   })
+  const [valoresAnterioresSimulador, setValoresAnterioresSimulador] = useState<ValoresEntradaSimulador>({
+    valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: ''
+  })
   const [seletorCartoesAberto, setSeletorCartoesAberto] = useState(false)
   const [salvandoSimulador, setSalvandoSimulador] = useState(false)
 
@@ -193,13 +196,15 @@ export function CartoesControleScreen() {
     try {
       const dados = await carregarSimuladorCaixa()
       setSimulador(dados)
-      setValoresEntradaSimulador({
+      const valoresCarregados = {
         valor_contas: dados.valor_contas ? String(dados.valor_contas) : '',
         valor_dinheiro: dados.valor_dinheiro ? String(dados.valor_dinheiro) : '',
         valor_pix: dados.valor_pix ? String(dados.valor_pix) : '',
         valor_conta_corrente: dados.valor_conta_corrente ? String(dados.valor_conta_corrente) : '',
         valor_salario: dados.valor_salario ? String(dados.valor_salario) : ''
-      })
+      }
+      setValoresEntradaSimulador(valoresCarregados)
+      setValoresAnterioresSimulador(valoresCarregados)
     } catch (erro) {
       console.warn('Erro ao carregar simulador de caixa:', erro)
     }
@@ -454,6 +459,13 @@ export function CartoesControleScreen() {
     try {
       await salvarSimuladorCaixa(atualizado)
       setSimulador(atualizado)
+      setValoresAnterioresSimulador({
+        valor_contas: String(atualizado.valor_contas || ''),
+        valor_dinheiro: String(atualizado.valor_dinheiro || ''),
+        valor_pix: String(atualizado.valor_pix || ''),
+        valor_conta_corrente: String(atualizado.valor_conta_corrente || ''),
+        valor_salario: String(atualizado.valor_salario || '')
+      })
       notify('Simulador salvo', 'Os dados foram gravados no simulador único.')
     } catch (erro: any) {
       notify('Erro ao salvar simulador', erro?.message || 'Não foi possível gravar os dados no banco.')
@@ -626,11 +638,20 @@ export function CartoesControleScreen() {
                     accessibilityLabel={campo.titulo}
                     style={styles.simulatorValueInput}
                     keyboardType="decimal-pad"
-                    placeholder="0,00"
-                    placeholderTextColor={colors.muted}
+                    placeholder={valoresAnterioresSimulador[campo.chave] ? formatarMoedaSimulador(Number(valoresAnterioresSimulador[campo.chave])).replace('R$', '').trim() : '0,00'}
+                    placeholderTextColor="#B8C0CC"
                     value={valoresEntradaSimulador[campo.chave]}
                     onChangeText={(valor) => setValoresEntradaSimulador((atual) => ({ ...atual, [campo.chave]: valor }))}
                   />
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel={`Apagar ${campo.titulo}`}
+                    disabled={!valoresEntradaSimulador[campo.chave]}
+                    style={[styles.simulatorEraseButton, !valoresEntradaSimulador[campo.chave] && styles.simulatorEraseButtonDisabled]}
+                    onPress={() => setValoresEntradaSimulador((atual) => ({ ...atual, [campo.chave]: '' }))}
+                  >
+                    <Ionicons name="backspace-outline" size={18} color={valoresEntradaSimulador[campo.chave] ? colors.muted : '#D5DAE1'} />
+                  </TouchableOpacity>
                 </View>
               </View>
               {campo.chave === 'valor_contas' && <View style={styles.simulatorNegativeSubtotalRow}>
@@ -1183,8 +1204,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent'
   },
   simulatorInputCurrencyWrap: {
-    width: '44%',
-    maxWidth: '44%',
+    width: '50%',
+    maxWidth: '50%',
     minWidth: 0,
     flexShrink: 1,
     minHeight: 38,
@@ -1194,7 +1215,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     paddingLeft: 8,
-    paddingRight: 4,
+    paddingRight: 3,
     overflow: 'hidden',
     backgroundColor: colors.surface
   },
@@ -1202,6 +1223,15 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 12,
     fontWeight: '700'
+  },
+  simulatorEraseButton: {
+    width: 28,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  simulatorEraseButtonDisabled: {
+    opacity: 0.65
   },
   simulatorNegativeSubtotalRow: {
     minHeight: 38,

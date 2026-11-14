@@ -72,9 +72,9 @@ export type Database = {
         Relationships: Relacao[]
       }
       poker_sessao_fotos: {
-        Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em: string }
-        Insert: { id: string; usuario_id?: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; criado_em?: string }
-        Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; local?: string; nome_arquivo?: string; tipo_mime?: string; storage_path?: string; criado_em?: string }
+        Row: { id: string; usuario_id: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; thumbnail_path: string | null; criado_em: string }
+        Insert: { id: string; usuario_id?: string; mes_base: string; data_cartao: string; local: string; nome_arquivo: string; tipo_mime: string; storage_path: string; thumbnail_path?: string | null; criado_em?: string }
+        Update: { id?: string; usuario_id?: string; mes_base?: string; data_cartao?: string; local?: string; nome_arquivo?: string; tipo_mime?: string; storage_path?: string; thumbnail_path?: string | null; criado_em?: string }
         Relationships: Relacao[]
       }
       organizacao_itens: {

@@ -10,7 +10,7 @@ import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
 import { APP_INFO } from '../constants/version'
 import { useModuleAccess } from '../services/ModuleAccessProvider'
-import { carregarCartoesPoker, carregarConfiguracoesLocaisPoker, carregarFormatoNegativoPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, enviarLogoLocalPoker, limparCacheDadosRemotos, removerLogoLocalPoker, salvarCartoesPoker, salvarConfiguracoesLocaisPoker, salvarFormatoNegativoPoker, salvarLocaisPoker, salvarTaxaPadraoPoker, sincronizarConfiguracoesLocaisPoker } from '../services/planilhasService'
+import { carregarConfiguracoesLocaisPoker, carregarFormatoNegativoPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, enviarLogoLocalPoker, limparCacheDadosRemotos, removerLogoLocalPoker, salvarConfiguracoesLocaisPoker, salvarFormatoNegativoPoker, salvarLocaisPoker, salvarTaxaPadraoPoker, sincronizarConfiguracoesLocaisPoker } from '../services/planilhasService'
 import type { FormatoNegativoPoker, LocalPokerConfig } from '../services/planilhasService'
 import type { ModuleKey } from '../services/ModuleAccessProvider'
 
@@ -33,14 +33,12 @@ export function ConfiguracoesScreen() {
   const [fimDia, setFimDia] = useState(20)
   const [atualizandoDados, setAtualizandoDados] = useState(false)
   const [categoria, setCategoria] = useState<CategoriaConfiguracao>('home')
-  const [cartoesPoker, setCartoesPoker] = useState(carregarCartoesPoker())
   const [locaisPoker, setLocaisPoker] = useState(carregarLocaisPoker())
   const [configuracoesLocais, setConfiguracoesLocais] = useState<LocalPokerConfig[]>(carregarConfiguracoesLocaisPoker())
   const [localEditando, setLocalEditando] = useState<LocalPokerConfig | null>(null)
   const [nomeLocalOriginal, setNomeLocalOriginal] = useState('')
   const [fotoLocalSelecionada, setFotoLocalSelecionada] = useState<DocumentPicker.DocumentPickerAsset | null>(null)
   const [salvandoLocal, setSalvandoLocal] = useState(false)
-  const [novoCartaoPoker, setNovoCartaoPoker] = useState('')
   const [novoLocalPoker, setNovoLocalPoker] = useState('')
   const [taxaPadraoPoker, setTaxaPadraoPoker] = useState(String(carregarTaxaPadraoPoker()))
   const [formatoNegativoPoker, setFormatoNegativoPoker] = useState<FormatoNegativoPoker>(carregarFormatoNegativoPoker())
@@ -120,19 +118,13 @@ export function ConfiguracoesScreen() {
     notify('Cache atualizado', 'Feche e reabra o aplicativo para carregar os dados do Supabase.')
   }
 
-  function adicionarOpcaoPoker(tipo: 'cartao' | 'local') {
-    const valor = (tipo === 'cartao' ? novoCartaoPoker : novoLocalPoker).trim()
+  function adicionarLocalPoker() {
+    const valor = novoLocalPoker.trim()
     if (!valor) return
-    if (tipo === 'cartao') {
-      if (cartoesPoker.some((item) => item.toLowerCase() === valor.toLowerCase())) { notify('Cartão já cadastrado', 'Use outro nome ou selecione o cartão existente.'); return }
-      const atualizados = [...cartoesPoker, valor]
-      setCartoesPoker(atualizados); salvarCartoesPoker(atualizados); setNovoCartaoPoker('')
-    } else {
-      if (locaisPoker.some((item) => item.toLowerCase() === valor.toLowerCase())) { notify('Local já cadastrado', 'Use outro nome ou selecione o local existente.'); return }
-      const atualizados = [...locaisPoker, valor]
-      const configs = [...configuracoesLocais, { nome: valor, cor: '#475569', aplica_taxa: true, ordem_exibicao: configuracoesLocais.length }]
-      setLocaisPoker(atualizados); setConfiguracoesLocais(configs); salvarLocaisPoker(atualizados); void salvarConfiguracoesLocaisPoker(configs).catch((erro) => notify('Não foi possível sincronizar os locais', erro?.message || 'Tente novamente.')); setNovoLocalPoker('')
-    }
+    if (locaisPoker.some((item) => item.toLowerCase() === valor.toLowerCase())) { notify('Local já cadastrado', 'Use um nome diferente ou selecione o local existente.'); return }
+    const atualizados = [...locaisPoker, valor]
+    const configs = [...configuracoesLocais, { nome: valor, cor: '#475569', aplica_taxa: true, ordem_exibicao: configuracoesLocais.length }]
+    setLocaisPoker(atualizados); setConfiguracoesLocais(configs); salvarLocaisPoker(atualizados); void salvarConfiguracoesLocaisPoker(configs).catch((erro) => notify('Não foi possível sincronizar os locais', erro?.message || 'Tente novamente.')); setNovoLocalPoker('')
   }
 
   function moverLocal(nome: string, direcao: -1 | 1) {
@@ -149,19 +141,14 @@ export function ConfiguracoesScreen() {
     void salvarConfiguracoesLocaisPoker(configs).catch((erro) => notify('Não foi possível salvar a ordem', erro?.message || 'Tente novamente.'))
   }
 
-  function removerOpcaoPoker(tipo: 'cartao' | 'local', nome: string) {
-    if (tipo === 'cartao') {
-      const atualizados = cartoesPoker.filter((item) => item !== nome)
-      setCartoesPoker(atualizados); salvarCartoesPoker(atualizados)
-    } else {
-      const atualizados = locaisPoker.filter((item) => item !== nome)
-      const configRemovida = configuracoesLocais.find((item) => item.nome === nome)
-      const configs = configuracoesLocais.filter((item) => item.nome !== nome)
-      setLocaisPoker(atualizados); setConfiguracoesLocais(configs); salvarLocaisPoker(atualizados)
-      void salvarConfiguracoesLocaisPoker(configs).then(async () => {
-        if (configRemovida?.storage_path) await removerLogoLocalPoker(configRemovida.storage_path)
-      }).catch((erro) => notify('Não foi possível remover o local', erro?.message || 'Tente novamente.'))
-    }
+  function removerLocalPoker(nome: string) {
+    const atualizados = locaisPoker.filter((item) => item !== nome)
+    const configRemovida = configuracoesLocais.find((item) => item.nome === nome)
+    const configs = configuracoesLocais.filter((item) => item.nome !== nome)
+    setLocaisPoker(atualizados); setConfiguracoesLocais(configs); salvarLocaisPoker(atualizados)
+    void salvarConfiguracoesLocaisPoker(configs).then(async () => {
+      if (configRemovida?.storage_path) await removerLogoLocalPoker(configRemovida.storage_path)
+    }).catch((erro) => notify('Não foi possível remover o local', erro?.message || 'Tente novamente.'))
   }
 
   async function selecionarFotoLocal() {
@@ -278,10 +265,6 @@ export function ConfiguracoesScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.card}><View style={styles.heading}><View style={[styles.icon, { backgroundColor: '#F3E8FF' }]}><Ionicons name="card-outline" size={20} color="#77158D" /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Cartões</Text><Text style={styles.itemSub}>Opções disponíveis nos lançamentos</Text></View></View>
-          <View style={styles.pokerOptions}>{cartoesPoker.map((nome) => <View key={nome} style={styles.pokerOption}><Text style={styles.pokerOptionText}>{nome}</Text><TouchableOpacity accessibilityLabel={`Remover cartão ${nome}`} onPress={() => removerOpcaoPoker('cartao', nome)}><Ionicons name="close-circle" size={18} color={colors.muted} /></TouchableOpacity></View>)}</View>
-          <View style={styles.addPokerRow}><TextInput value={novoCartaoPoker} onChangeText={setNovoCartaoPoker} placeholder="Nome do cartão" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} onSubmitEditing={() => adicionarOpcaoPoker('cartao')} /><TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar cartão" style={styles.addPokerButton} onPress={() => adicionarOpcaoPoker('cartao')}><Ionicons name="add" size={20} color="#fff" /></TouchableOpacity></View>
-        </View>
         <View style={styles.card}><View style={styles.heading}><View style={[styles.icon, { backgroundColor: '#F3E8FF' }]}><Ionicons name="location-outline" size={20} color="#77158D" /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Locais</Text><Text style={styles.itemSub}>Clubes e locais das sessões</Text></View></View>
           <View style={styles.venueList}>{locaisPoker.map((nome, indice) => {
             const config = configuracoesLocais.find((item) => item.nome.toLowerCase() === nome.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))
@@ -293,10 +276,10 @@ export function ConfiguracoesScreen() {
                 <TouchableOpacity accessibilityLabel={`Mover ${nome} para baixo`} disabled={indice === locaisPoker.length - 1} onPress={() => moverLocal(nome, 1)} style={styles.orderButton}><Ionicons name="chevron-down" size={16} color={indice === locaisPoker.length - 1 ? colors.border : colors.muted} /></TouchableOpacity>
               </View>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Editar local ${nome}`} style={styles.venueEditButton} onPress={() => { setLocalEditando({ nome, cor: config?.cor || '#475569', storage_path: config?.storage_path, aliases: config?.aliases }); setNomeLocalOriginal(nome); setFotoLocalSelecionada(null) }}><Ionicons name="create-outline" size={18} color={colors.primary} /></TouchableOpacity>
-              <TouchableOpacity accessibilityLabel={`Remover local ${nome}`} onPress={() => removerOpcaoPoker('local', nome)}><Ionicons name="close-circle" size={18} color={colors.muted} /></TouchableOpacity>
+              <TouchableOpacity accessibilityLabel={`Remover local ${nome}`} onPress={() => removerLocalPoker(nome)}><Ionicons name="close-circle" size={18} color={colors.muted} /></TouchableOpacity>
             </View>
           })}</View>
-          <View style={styles.addPokerRow}><TextInput value={novoLocalPoker} onChangeText={setNovoLocalPoker} placeholder="Nome do local" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} onSubmitEditing={() => adicionarOpcaoPoker('local')} /><TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar local" style={styles.addPokerButton} onPress={() => adicionarOpcaoPoker('local')}><Ionicons name="add" size={20} color="#fff" /></TouchableOpacity></View>
+          <View style={styles.addPokerRow}><TextInput value={novoLocalPoker} onChangeText={setNovoLocalPoker} placeholder="Nome do local" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} onSubmitEditing={adicionarLocalPoker} /><TouchableOpacity accessibilityRole="button" accessibilityLabel="Adicionar local" style={styles.addPokerButton} onPress={adicionarLocalPoker}><Ionicons name="add" size={20} color="#fff" /></TouchableOpacity></View>
         </View>
       </>}
 
@@ -361,7 +344,7 @@ const styles = StyleSheet.create({
   versionValue: { fontSize: 12, fontWeight: '600', color: colors.text },
   versionBadge: { backgroundColor: colors.primaryLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: colors.borderFocus },
   versionBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary }
-  ,pokerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pokerOption: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.surfaceHover, borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingLeft: 11, paddingRight: 7, paddingVertical: 6 }, pokerOptionText: { color: colors.text, fontWeight: '600', fontSize: 12 }, addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, pokerPercent: { color: colors.textSecondary, fontSize: 15, fontWeight: '800', marginHorizontal: 4 }, negativeFormatOptions: { gap: 8 }, negativeFormatOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }, negativeFormatOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, negativeFormatText: { color: colors.text, fontSize: 13, fontWeight: '700' }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  ,addPokerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, pokerPercent: { color: colors.textSecondary, fontSize: 15, fontWeight: '800', marginHorizontal: 4 }, negativeFormatOptions: { gap: 8 }, negativeFormatOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 11, borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface }, negativeFormatOptionActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight }, negativeFormatText: { color: colors.text, fontSize: 13, fontWeight: '700' }, addPokerButton: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   venueList: { gap: 9 }, venueRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 9, backgroundColor: colors.surface }, venueThumb: { width: 44, height: 44, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHover }, venueInfo: { flex: 1, gap: 4 }, venueColorLine: { flexDirection: 'row', alignItems: 'center', gap: 6 }, venueColorSwatch: { width: 16, height: 16, borderRadius: 5, borderWidth: 1, borderColor: colors.border }, venueOrder: { color: colors.muted, fontSize: 10, fontWeight: '700' }, orderButtons: { alignItems: 'center', justifyContent: 'center' }, orderButton: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center' }, venueTaxRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 }, venueEditButton: { width: 34, height: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryLight },
   editModalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.48)', justifyContent: 'center', padding: 20 }, editModalCard: { backgroundColor: colors.surface, borderRadius: 18, padding: 18, gap: 9, borderWidth: 1, borderColor: colors.border }, editModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }, editLabel: { color: colors.text, fontSize: 13, fontWeight: '700', marginTop: 4 }, colorEditRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, photoPickButton: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 9, borderWidth: 1, borderColor: colors.border, borderRadius: 11, backgroundColor: colors.surfaceHover }, photoPreview: { width: 40, height: 40, borderRadius: 8 }, photoPickText: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '600' }, photoHint: { color: colors.muted, fontSize: 11, lineHeight: 16 }, editModalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 9, marginTop: 8 }, cancelEditButton: { minHeight: 42, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHover }, cancelEditText: { color: colors.text, fontWeight: '700' }, saveEditButton: { minHeight: 42, paddingHorizontal: 16, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary }, saveEditText: { color: '#fff', fontWeight: '800' }
 })
