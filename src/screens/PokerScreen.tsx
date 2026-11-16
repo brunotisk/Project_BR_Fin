@@ -58,6 +58,7 @@ import {
 } from '../services/planilhasService'
 import type { FormatoNegativoPoker, LocalPokerConfig, FotoPoker, MetadadoContagemFotoPoker } from '../services/planilhasService'
 import { CartaoCredito, LancamentoPoker } from '../types'
+import { PloCalculator } from '../components/PloCalculator'
 
 const MESES_ABREVIADOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -244,7 +245,7 @@ function formatarValorPokerCompacto(valor: number) {
 }
 
 export function PokerScreen() {
-  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes'>('resumido')
+  const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes' | 'calc'>('resumido')
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
@@ -1035,6 +1036,10 @@ export function PokerScreen() {
             <Ionicons name="albums-outline" size={15} color={visualizacaoSessoes === 'sessoes' ? '#fff' : colors.primary} />
             <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'sessoes' && styles.viewModeButtonTextActive]}>Sessões</Text>
           </TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'calc' }} onPress={() => setVisualizacaoSessoes('calc')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'calc' && styles.viewModeButtonActive]}>
+            <Ionicons name="calculator-outline" size={15} color={visualizacaoSessoes === 'calc' ? '#fff' : colors.primary} />
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'calc' && styles.viewModeButtonTextActive]}>Calc</Text>
+          </TouchableOpacity>
         </View>
 
         {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && <View style={styles.kpiRow}>
@@ -1154,6 +1159,8 @@ export function PokerScreen() {
           <Text style={styles.graphTitle}>Sessões em construção</Text>
           <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center' }}>Esta área estará disponível em breve.</Text>
         </View>}
+
+        {visualizacaoSessoes === 'calc' && <PloCalculator />}
 
         {/* Filtro por ano e mês base */}
         {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && <>
@@ -1843,7 +1850,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   viewModeTabButton: {
-    width: 77
+    minWidth: 62,
+    paddingHorizontal: 6
   },
   viewModeButtonActive: {
     borderColor: colors.primary,
