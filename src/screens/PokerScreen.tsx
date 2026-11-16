@@ -1022,23 +1022,19 @@ export function PokerScreen() {
         <View style={styles.viewModeSwitch}>
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'resumido' }} onPress={() => setVisualizacaoSessoes('resumido')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'resumido' && styles.viewModeButtonActive]}>
             <Ionicons name="grid-outline" size={15} color={visualizacaoSessoes === 'resumido' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumido</Text>
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'resumido' && styles.viewModeButtonTextActive]}>Resumo</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'detalhado' }} onPress={() => setVisualizacaoSessoes('detalhado')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonActive]}>
             <Ionicons name="list-outline" size={15} color={visualizacaoSessoes === 'detalhado' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhado</Text>
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'detalhado' && styles.viewModeButtonTextActive]}>Detalhe</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'graficos' }} onPress={() => setVisualizacaoSessoes('graficos')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'graficos' && styles.viewModeButtonActive]}>
             <Ionicons name="stats-chart-outline" size={15} color={visualizacaoSessoes === 'graficos' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'graficos' && styles.viewModeButtonTextActive]}>Gráficos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'sessoes' }} onPress={() => setVisualizacaoSessoes('sessoes')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'sessoes' && styles.viewModeButtonActive]}>
-            <Ionicons name="albums-outline" size={15} color={visualizacaoSessoes === 'sessoes' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'sessoes' && styles.viewModeButtonTextActive]}>Sessões</Text>
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'graficos' && styles.viewModeButtonTextActive]}>Gráfico</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: visualizacaoSessoes === 'calc' }} onPress={() => setVisualizacaoSessoes('calc')} style={[styles.viewModeButton, styles.viewModeTabButton, visualizacaoSessoes === 'calc' && styles.viewModeButtonActive]}>
             <Ionicons name="calculator-outline" size={15} color={visualizacaoSessoes === 'calc' ? '#fff' : colors.primary} />
-            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'calc' && styles.viewModeButtonTextActive]}>Calc</Text>
+            <Text style={[styles.viewModeButtonText, visualizacaoSessoes === 'calc' && styles.viewModeButtonTextActive]}>Calculadora</Text>
           </TouchableOpacity>
         </View>
 

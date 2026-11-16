@@ -103,6 +103,7 @@ const STORAGE_KEYS = {
   DIAS_POKER_BLOQUEADOS: '@fin_poker_dias_bloqueados',
   TAXA_PADRAO: '@fin_poker_taxa_padrao',
   FORMATO_NEGATIVO_POKER: '@fin_poker_formato_negativo',
+  JOGOS_CALCULADORA_POKER: '@fin_poker_jogos_calculadora',
   LOCAIS: '@fin_poker_locais',
   LOCAIS_CONFIG: '@fin_poker_locais_config',
   MES_SELECIONADO: '@fin_mes_fechamento_selecionado',
@@ -1017,6 +1018,19 @@ export function carregarFormatoNegativoPoker(): FormatoNegativoPoker {
 
 export function salvarFormatoNegativoPoker(formato: FormatoNegativoPoker): void {
   setLocalItem(STORAGE_KEYS.FORMATO_NEGATIVO_POKER, formato)
+}
+
+export type JogoCalculadoraPoker = 'holdem' | 'plo4' | 'plo5' | 'plo6'
+export const JOGOS_CALCULADORA_POKER_PADRAO: JogoCalculadoraPoker[] = ['holdem', 'plo4', 'plo5', 'plo6']
+
+export function carregarJogosCalculadoraPoker(): JogoCalculadoraPoker[] {
+  const salvos = getLocalItem<JogoCalculadoraPoker[]>(STORAGE_KEYS.JOGOS_CALCULADORA_POKER, JOGOS_CALCULADORA_POKER_PADRAO)
+  const validos = Array.isArray(salvos) ? salvos.filter((jogo): jogo is JogoCalculadoraPoker => JOGOS_CALCULADORA_POKER_PADRAO.includes(jogo)) : []
+  return validos.length > 0 ? validos : JOGOS_CALCULADORA_POKER_PADRAO
+}
+
+export function salvarJogosCalculadoraPoker(jogos: JogoCalculadoraPoker[]): void {
+  if (jogos.length > 0) setLocalItem(STORAGE_KEYS.JOGOS_CALCULADORA_POKER, jogos)
 }
 
 export function carregarLocaisPoker(): string[] {

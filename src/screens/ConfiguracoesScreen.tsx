@@ -10,8 +10,8 @@ import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
 import { APP_INFO } from '../constants/version'
 import { useModuleAccess } from '../services/ModuleAccessProvider'
-import { carregarConfiguracoesLocaisPoker, carregarFormatoNegativoPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, enviarLogoLocalPoker, limparCacheDadosRemotos, removerLogoLocalPoker, salvarConfiguracoesLocaisPoker, salvarFormatoNegativoPoker, salvarLocaisPoker, salvarTaxaPadraoPoker, sincronizarConfiguracoesLocaisPoker } from '../services/planilhasService'
-import type { FormatoNegativoPoker, LocalPokerConfig } from '../services/planilhasService'
+import { carregarConfiguracoesLocaisPoker, carregarFormatoNegativoPoker, carregarJogosCalculadoraPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, enviarLogoLocalPoker, limparCacheDadosRemotos, removerLogoLocalPoker, salvarConfiguracoesLocaisPoker, salvarFormatoNegativoPoker, salvarJogosCalculadoraPoker, salvarLocaisPoker, salvarTaxaPadraoPoker, sincronizarConfiguracoesLocaisPoker } from '../services/planilhasService'
+import type { FormatoNegativoPoker, JogoCalculadoraPoker, LocalPokerConfig } from '../services/planilhasService'
 import type { ModuleKey } from '../services/ModuleAccessProvider'
 
 type ConviteRecebido = { convite_id: string; agenda_id: string; agenda_nome: string; remetente: string; criado_em: string }
@@ -42,6 +42,7 @@ export function ConfiguracoesScreen() {
   const [novoLocalPoker, setNovoLocalPoker] = useState('')
   const [taxaPadraoPoker, setTaxaPadraoPoker] = useState(String(carregarTaxaPadraoPoker()))
   const [formatoNegativoPoker, setFormatoNegativoPoker] = useState<FormatoNegativoPoker>(carregarFormatoNegativoPoker())
+  const [jogosCalculadoraPoker, setJogosCalculadoraPoker] = useState<JogoCalculadoraPoker[]>(carregarJogosCalculadoraPoker())
 
   const carregar = useCallback(async () => {
     void sincronizarConfiguracoesLocaisPoker().then((configs) => {
@@ -211,6 +212,18 @@ export function ConfiguracoesScreen() {
     salvarFormatoNegativoPoker(formato)
   }
 
+  function alternarJogoCalculadoraPoker(jogo: JogoCalculadoraPoker) {
+    const selecionados = jogosCalculadoraPoker.includes(jogo)
+      ? jogosCalculadoraPoker.filter((item) => item !== jogo)
+      : [...jogosCalculadoraPoker, jogo]
+    if (selecionados.length === 0) {
+      notify('Selecione ao menos um jogo', 'A calculadora precisa ter pelo menos uma modalidade disponível.')
+      return
+    }
+    setJogosCalculadoraPoker(selecionados)
+    salvarJogosCalculadoraPoker(selecionados)
+  }
+
   return <View style={styles.page}>
     <View style={styles.fixedHeader}>
       <Text style={styles.title}>Configurações</Text>
@@ -249,6 +262,17 @@ export function ConfiguracoesScreen() {
       </>}
 
       {categoria === 'poker' && <>
+        <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="albums-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Jogos da calculadora</Text><Text style={styles.itemSub}>Escolha quais modalidades aparecem na calculadora de equidade.</Text></View></View>
+          <View style={styles.negativeFormatOptions}>
+            {([['holdem', "Texas Hold'em"], ['plo4', 'PLO 4'], ['plo5', 'PLO 5'], ['plo6', 'PLO 6']] as [JogoCalculadoraPoker, string][]).map(([jogo, nome]) => {
+              const selecionado = jogosCalculadoraPoker.includes(jogo)
+              return <TouchableOpacity key={jogo} accessibilityRole="checkbox" accessibilityState={{ checked: selecionado }} onPress={() => alternarJogoCalculadoraPoker(jogo)} style={[styles.negativeFormatOption, selecionado && styles.negativeFormatOptionActive]}>
+                <Ionicons name={selecionado ? 'checkbox' : 'square-outline'} size={18} color={selecionado ? colors.primary : colors.muted} />
+                <Text style={styles.negativeFormatText}>{nome}</Text>
+              </TouchableOpacity>
+            })}
+          </View>
+        </View>
         <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="pricetag-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Taxa padrão</Text><Text style={styles.itemSub}>Percentual usado ao ativar a taxa em um novo lançamento.</Text></View></View>
           <View style={styles.addPokerRow}><TextInput value={taxaPadraoPoker} onChangeText={setTaxaPadraoPoker} placeholder="5" placeholderTextColor={colors.muted} keyboardType="decimal-pad" style={[styles.input, { flex: 1 }]} /><Text style={styles.pokerPercent}>%</Text></View>
           <Button title="Salvar taxa padrão" onPress={salvarTaxaPoker} />

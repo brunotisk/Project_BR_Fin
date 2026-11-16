@@ -10,7 +10,9 @@ import {
   View
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useFocusEffect } from '@react-navigation/native'
 import { colors } from '../theme'
+import { carregarJogosCalculadoraPoker } from '../services/planilhasService'
 import {
   CardData,
   getCardData,
@@ -54,6 +56,7 @@ const VARIANTS: { id: PokerGameVariant; label: string; sub: string }[] = [
 
 export function PloCalculator() {
   const [variant, setVariant] = useState<PokerGameVariant>('holdem')
+  const [availableGames, setAvailableGames] = useState<PokerGameVariant[]>(carregarJogosCalculadoraPoker())
 
   // Jogadores (inicia com 2 jogadores, cada um com a quantidade de cartas da variante)
   const [players, setPlayers] = useState<PlayerState[]>([
@@ -75,8 +78,12 @@ export function PloCalculator() {
 
   const reqCardCount = getRequiredCardCount(variant)
 
+  useFocusEffect(useCallback(() => {
+    setAvailableGames(carregarJogosCalculadoraPoker())
+  }, []))
+
   // Atualiza quantidade de cartas dos jogadores ao mudar a variante
-  const handleSelectVariant = (newVariant: PokerGameVariant) => {
+  const handleSelectVariant = useCallback((newVariant: PokerGameVariant) => {
     setVariant(newVariant)
     const newCount = getRequiredCardCount(newVariant)
     setPlayers((prev) =>
@@ -89,7 +96,11 @@ export function PloCalculator() {
       })
     )
     setResults(null)
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!availableGames.includes(variant)) handleSelectVariant(availableGames[0])
+  }, [availableGames, handleSelectVariant, variant])
 
   // Conjunto de cartas já em uso no baralho
   const usedCardsSet = useMemo(() => {
@@ -183,30 +194,20 @@ export function PloCalculator() {
   // Encontra o próximo slot vazio para avanço automático
   const encontrarProximoSlotVazio = (currentSlot: TargetSlot): TargetSlot => {
     if (!currentSlot) return null
-
-    if (currentSlot.type === 'player') {
-      const pIdx = currentSlot.playerIndex
-      const cIdx = currentSlot.cardIndex
-
-      // Próxima carta do mesmo jogador
-      if (cIdx + 1 < reqCardCount) {
-        return { type: 'player', playerIndex: pIdx, cardIndex: cIdx + 1 }
-      }
-      // Próximo jogador
-      if (pIdx + 1 < players.length) {
-        return { type: 'player', playerIndex: pIdx + 1, cardIndex: 0 }
-      }
-      // Avança para o board
-      return { type: 'board', cardIndex: 0 }
+    const slots: Exclude<TargetSlot, null>[] = [
+      ...players.flatMap((player, playerIndex) =>
+        player.cards.map((_, cardIndex) => ({ type: 'player' as const, playerIndex, cardIndex }))
+      ),
+      ...board.map((_, cardIndex) => ({ type: 'board' as const, cardIndex }))
+    ]
+    const currentIndex = slots.findIndex((slot) =>
+      slot.type === currentSlot.type && slot.cardIndex === currentSlot.cardIndex &&
+      (slot.type !== 'player' || (currentSlot.type === 'player' && slot.playerIndex === currentSlot.playerIndex))
+    )
+    for (const slot of slots.slice(currentIndex + 1)) {
+      const card = slot.type === 'player' ? players[slot.playerIndex]?.cards[slot.cardIndex] : board[slot.cardIndex]
+      if (card === null || card === undefined) return slot
     }
-
-    if (currentSlot.type === 'board') {
-      if (currentSlot.cardIndex + 1 < 5) {
-        return { type: 'board', cardIndex: currentSlot.cardIndex + 1 }
-      }
-      return null
-    }
-
     return null
   }
 
@@ -331,7 +332,7 @@ export function PloCalculator() {
       {/* ======================================================== */}
       <View style={styles.settingsRow}>
         <View style={styles.variantGroup}>
-          {VARIANTS.map((v) => (
+          {VARIANTS.filter((v) => availableGames.includes(v.id)).map((v) => (
             <TouchableOpacity
               key={v.id}
               onPress={() => handleSelectVariant(v.id)}
@@ -528,9 +529,11 @@ export function PloCalculator() {
               <View>
                 <Text style={styles.pickerTitle}>Selecionar Carta</Text>
                 <Text style={styles.pickerSub}>
-                  {activeSlot?.type === 'player'
-                    ? `${players[activeSlot.playerIndex]?.name} • Carta ${activeSlot.cardIndex + 1}`
-                    : `Mesa • Carta ${(activeSlot?.cardIndex || 0) + 1}`}
+                  {!activeSlot
+                    ? 'Todas as posições foram preenchidas'
+                    : activeSlot.type === 'player'
+                      ? `Hand P${activeSlot.playerIndex + 1} • Carta ${activeSlot.cardIndex + 1}`
+                      : `Board • Carta ${activeSlot.cardIndex + 1}`}
                 </Text>
               </View>
 
@@ -538,6 +541,32 @@ export function PloCalculator() {
                 <Ionicons name="close" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
+
+            <Text style={styles.pickerSectionTitle}>Preenchendo</Text>
+            <ScrollView style={styles.pickerTargets} nestedScrollEnabled>
+              {players.map((player, playerIndex) => (
+                <View key={player.id} style={styles.pickerTargetGroup}>
+                  <Text style={styles.pickerTargetLabel}>Hand P{playerIndex + 1} · {player.name}</Text>
+                  <View style={styles.pickerTargetSlots}>
+                    {player.cards.map((cardId, cardIndex) => (
+                      <View key={cardIndex}>
+                        {renderCardSlot(cardId, () => setActiveSlot({ type: 'player', playerIndex, cardIndex }), activeSlot?.type === 'player' && activeSlot.playerIndex === playerIndex && activeSlot.cardIndex === cardIndex, 'small')}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+              <View style={styles.pickerTargetGroup}>
+                <Text style={styles.pickerTargetLabel}>Board</Text>
+                <View style={styles.pickerTargetSlots}>
+                  {board.map((cardId, cardIndex) => (
+                    <View key={cardIndex}>
+                      {renderCardSlot(cardId, () => setActiveSlot({ type: 'board', cardIndex }), activeSlot?.type === 'board' && activeSlot.cardIndex === cardIndex, 'small')}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
 
             {/* Ações rápidas no modal */}
             <View style={styles.pickerActionsRow}>
@@ -551,59 +580,29 @@ export function PloCalculator() {
               </TouchableOpacity>
             </View>
 
-            {/* Matriz 52 Cartas (4 naipes x 13 ranks) */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
+            {/* Baralho em quatro colunas, uma por naipe */}
+            <Text style={styles.pickerSectionTitle}>Escolha uma carta</Text>
+            <ScrollView style={styles.deckScroll} showsVerticalScrollIndicator>
               <View style={styles.deckGrid}>
-                {SUITS.map((suit) => {
-                  return (
-                    <View key={suit} style={styles.suitRow}>
-                      {/* Símbolo do Naipe na lateral */}
-                      <View style={[styles.suitIndicator, { backgroundColor: SUIT_COLORS[suit] + '15' }]}>
-                        <Text style={[styles.suitIndicatorSymbol, { color: SUIT_COLORS[suit] }]}>
-                          {SUIT_SYMBOLS[suit]}
-                        </Text>
-                      </View>
-
-                      {/* 13 Cartas do Naipe (A down to 2) */}
-                      {[...RANKS].reverse().map((rank) => {
-                        const rIdx = RANKS.indexOf(rank)
-                        const sIdx = SUITS.indexOf(suit)
-                        const cardId = (rIdx << 2) | sIdx
-                        const isUsed = usedCardsSet.has(cardId)
-
-                        return (
-                          <TouchableOpacity
-                            key={cardId}
-                            disabled={isUsed}
-                            onPress={() => selecionarCarta(cardId)}
-                            style={[
-                              styles.deckCardBtn,
-                              isUsed && styles.deckCardBtnUsed
-                            ]}
-                            activeOpacity={0.6}
-                          >
-                            <Text
-                              style={[
-                                styles.deckCardRank,
-                                { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }
-                              ]}
-                            >
-                              {rank}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.deckCardSuit,
-                                { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }
-                              ]}
-                            >
-                              {SUIT_SYMBOLS[suit]}
-                            </Text>
-                          </TouchableOpacity>
-                        )
-                      })}
+                {SUITS.map((suit) => (
+                  <View key={suit} style={styles.suitColumn}>
+                    <View style={[styles.suitIndicator, { backgroundColor: SUIT_COLORS[suit] + '15' }]}>
+                      <Text style={[styles.suitIndicatorSymbol, { color: SUIT_COLORS[suit] }]}>{SUIT_SYMBOLS[suit]}</Text>
                     </View>
-                  )
-                })}
+                    {[...RANKS].reverse().map((rank) => {
+                      const rIdx = RANKS.indexOf(rank)
+                      const sIdx = SUITS.indexOf(suit)
+                      const cardId = (rIdx << 2) | sIdx
+                      const isUsed = usedCardsSet.has(cardId)
+                      return (
+                        <TouchableOpacity key={cardId} disabled={isUsed} onPress={() => selecionarCarta(cardId)} style={[styles.deckCardBtn, isUsed && styles.deckCardBtnUsed]} activeOpacity={0.6}>
+                          <Text style={[styles.deckCardRank, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{rank}</Text>
+                          <Text style={[styles.deckCardSuit, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{SUIT_SYMBOLS[suit]}</Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                ))}
               </View>
             </ScrollView>
           </View>
@@ -968,6 +967,7 @@ const styles = StyleSheet.create({
   pickerCard: {
     width: '100%',
     maxWidth: 580,
+    maxHeight: '92%',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
@@ -991,6 +991,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.muted,
     marginTop: 1
+  },
+  pickerSectionTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 6
+  },
+  pickerTargets: {
+    maxHeight: 185,
+    marginBottom: 10
+  },
+  pickerTargetGroup: {
+    marginBottom: 8
+  },
+  pickerTargetLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4
+  },
+  pickerTargetSlots: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4
+  },
+  deckScroll: {
+    maxHeight: 390
   },
   pickerCloseBtn: {
     padding: 4
@@ -1030,28 +1057,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF'
   },
   deckGrid: {
-    gap: 6
-  },
-  suitRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4
+    gap: 5,
+    paddingBottom: 4
+  },
+  suitColumn: {
+    flex: 1,
+    alignItems: 'stretch',
+    gap: 3
   },
   suitIndicator: {
-    width: 28,
-    height: 38,
+    height: 30,
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 2
+    marginBottom: 2
   },
   suitIndicatorSymbol: {
     fontSize: 18,
     fontWeight: '900'
   },
   deckCardBtn: {
-    width: 36,
-    height: 48,
+    height: 38,
     backgroundColor: '#FFFFFF',
     borderRadius: 6,
     borderWidth: 1,
