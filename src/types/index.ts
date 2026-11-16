@@ -55,6 +55,7 @@ export type CartaoControleItem = {
   pagamento?: string
   fechamento_estimado?: boolean
   status?: 'aberto' | 'fechado'
+  situacao_pagamento?: 'pago' | 'nao_pago' | 'vencida'
   atualizado_em_texto?: string
   ordem?: number
   criado_em?: string

@@ -8,7 +8,6 @@ import { Categoria, CartaoCredito } from '../types'
 import { colors } from '../theme'
 import { formatarData, hojeISO } from '../utils/datas'
 import { Input } from '../components/Input'
-import { OptionSelector } from '../components/OptionSelector'
 import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
 
@@ -26,7 +25,6 @@ export function NovaTransacaoScreen() {
   const [cartaoId, setCartaoId] = useState('')
   const [categoriaId, setCategoriaId] = useState<string | null>(null)
   const [observacao, setObservacao] = useState('')
-  const [status, setStatus] = useState<'confirmado' | 'pendente'>('confirmado')
 
   const [isParcelado, setIsParcelado] = useState(false)
   const [totalParcelas, setTotalParcelas] = useState('2')
@@ -123,7 +121,6 @@ export function NovaTransacaoScreen() {
           descricao: descricao.trim(),
           valor: valorNum,
           data: dataTransacao,
-          status,
           observacao: observacao.trim() || null
         })
         if (error) throw error
@@ -220,21 +217,39 @@ export function NovaTransacaoScreen() {
             <Text style={styles.label}>Categoria da despesa</Text>
             <TouchableOpacity onPress={() => navigation.navigate('NovaCategoria')}><Text style={styles.linkTexto}>+ Nova Categoria</Text></TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
-            <TouchableOpacity onPress={() => setCategoriaId(null)} style={[styles.chip, !categoriaId && styles.chipAtivo]}><Text style={[styles.chipTexto, !categoriaId && styles.chipTextoAtivo]}>Sem categoria</Text></TouchableOpacity>
+          <View style={styles.categoriesGrid}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityState={{ selected: !categoriaId }}
+              onPress={() => setCategoriaId(null)}
+              style={[styles.categoryOption, !categoriaId && styles.categoryOptionSelected]}
+            >
+              <View style={[styles.categoryIcon, !categoriaId && styles.categoryIconSelected]}>
+                <Ionicons name="remove-circle-outline" size={18} color={!categoriaId ? colors.primary : colors.muted} />
+              </View>
+              <Text numberOfLines={2} style={[styles.categoryOptionText, !categoriaId && styles.categoryOptionTextSelected]}>Sem categoria</Text>
+              {!categoriaId && <Ionicons name="checkmark-circle" size={17} color={colors.primary} />}
+            </TouchableOpacity>
             {categorias.map((cat) => {
               const selecionada = cat.id === categoriaId
-              return <TouchableOpacity key={cat.id} onPress={() => setCategoriaId(cat.id)} style={[styles.chip, selecionada && { borderColor: cat.cor || colors.primary, backgroundColor: (cat.cor || colors.primary) + '20' }]}><Text style={[styles.chipTexto, selecionada && { fontWeight: '700', color: colors.text }]}>{cat.nome}</Text></TouchableOpacity>
+              const cor = cat.cor || colors.primary
+              return <TouchableOpacity
+                key={cat.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selecionada }}
+                accessibilityLabel={`Selecionar categoria ${cat.nome}`}
+                onPress={() => setCategoriaId(cat.id)}
+                style={[styles.categoryOption, selecionada && { borderColor: cor, backgroundColor: colors.primaryLight }]}
+              >
+                <View style={[styles.categoryIcon, { backgroundColor: `${cor}20` }]}>
+                  <Ionicons name={(cat.icone as keyof typeof Ionicons.glyphMap) || 'pricetag-outline'} size={18} color={cor} />
+                </View>
+                <Text numberOfLines={2} style={[styles.categoryOptionText, selecionada && { color: colors.text, fontWeight: '700' }]}>{cat.nome}</Text>
+                {selecionada && <Ionicons name="checkmark-circle" size={17} color={cor} />}
+              </TouchableOpacity>
             })}
-          </ScrollView>
+          </View>
         </View>
-
-        <OptionSelector
-          label="Situação do Lançamento"
-          options={[{ label: 'Confirmado / Pago', value: 'confirmado' }, { label: 'Pendente / Agendado', value: 'pendente' }]}
-          selectedValue={status}
-          onSelect={(situacao) => setStatus(situacao as 'confirmado' | 'pendente')}
-        />
 
         <View style={styles.parcelamentoCard}>
           <View style={styles.rowBetween}>
@@ -291,11 +306,13 @@ const styles = StyleSheet.create({
   cardBottom: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 9 },
   cardEyebrow: { color: 'rgba(255,255,255,0.72)', fontSize: 8, fontWeight: '700', letterSpacing: 0.8 },
   cardName: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 3 },
-  chipsScroll: { gap: 8, paddingVertical: 4 },
-  chip: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  chipAtivo: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
-  chipTexto: { fontSize: 13, color: colors.muted },
-  chipTextoAtivo: { color: colors.primary, fontWeight: '700' },
+  categoriesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoryOption: { width: '48%', minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
+  categoryOptionSelected: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  categoryIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: colors.surfaceHover },
+  categoryIconSelected: { backgroundColor: colors.surface },
+  categoryOptionText: { flex: 1, color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+  categoryOptionTextSelected: { color: colors.primary, fontWeight: '700' },
   alerta: { padding: 12, backgroundColor: colors.warningLight, borderRadius: 8, borderWidth: 1, borderColor: colors.warning, gap: 6 },
   alertaTexto: { fontSize: 13, color: colors.text },
   parcelamentoCard: { backgroundColor: colors.background, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border, gap: 12 },

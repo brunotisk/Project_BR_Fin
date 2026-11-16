@@ -99,6 +99,7 @@ type OpcaoCartaoSimulador = {
 
 type CampoValorSimulador = 'valor_contas' | 'valor_dinheiro' | 'valor_pix' | 'valor_conta_corrente' | 'valor_salario'
 type ValoresEntradaSimulador = Record<CampoValorSimulador, string>
+type SituacaoPagamentoCartao = 'pago' | 'nao_pago' | 'vencida'
 
 const SIMULADOR_INICIAL: DadosSimuladorCaixa = {
   valor_cartoes: 0,
@@ -133,6 +134,7 @@ export function CartoesControleScreen() {
   const [valoresAnterioresSimulador, setValoresAnterioresSimulador] = useState<ValoresEntradaSimulador>({
     valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: ''
   })
+  const [fontesSelecionadasSimulador, setFontesSelecionadasSimulador] = useState<CampoValorSimulador[]>([])
   const [seletorCartoesAberto, setSeletorCartoesAberto] = useState(false)
   const [salvandoSimulador, setSalvandoSimulador] = useState(false)
 
@@ -150,6 +152,7 @@ export function CartoesControleScreen() {
   const [formPagamento, setFormPagamento] = useState('')
   const [formFechamentoEstimado, setFormFechamentoEstimado] = useState(false)
   const [formStatus, setFormStatus] = useState<'aberto' | 'fechado'>('aberto')
+  const [formSituacaoPagamento, setFormSituacaoPagamento] = useState<SituacaoPagamentoCartao>('nao_pago')
   const [campoCalendario, setCampoCalendario] = useState<'fechamento' | 'pagamento' | null>(null)
   const [mesCalendario, setMesCalendario] = useState(() => mesReferenciaParaChave(mesAtual))
 
@@ -248,7 +251,8 @@ export function CartoesControleScreen() {
         ...item,
         id: gerarUuidPoker(),
         mes_referencia: mesAtual,
-        status: 'aberto' as const
+        status: 'aberto' as const,
+        situacao_pagamento: 'nao_pago' as const
       }))
       if (!novos.length) {
         notify('Cartões já copiados', 'O mês seguinte já possui todos os cartões do mês atual.')
@@ -278,6 +282,7 @@ export function CartoesControleScreen() {
     setFormPagamento('')
     setFormFechamentoEstimado(false)
     setFormStatus('aberto')
+    setFormSituacaoPagamento('nao_pago')
     setCampoCalendario(null)
     setMesCalendario(mesReferenciaParaChave(mesAtual))
     setModalVisible(true)
@@ -294,6 +299,7 @@ export function CartoesControleScreen() {
     setFormPagamento(item.pagamento || '')
     setFormFechamentoEstimado(item.fechamento_estimado || false)
     setFormStatus(item.status === 'fechado' ? 'fechado' : 'aberto')
+    setFormSituacaoPagamento(item.situacao_pagamento || 'nao_pago')
     setCampoCalendario(null)
     setMesCalendario(mesReferenciaParaChave(item.fechamento || item.pagamento || mesAtual))
     setModalVisible(true)
@@ -355,6 +361,7 @@ export function CartoesControleScreen() {
       pagamento: formPagamento.trim(),
       fechamento_estimado: formFechamentoEstimado,
       status: formStatus,
+      situacao_pagamento: formSituacaoPagamento,
       atualizado_em_texto: atualizadoEm
     }
 
@@ -411,12 +418,12 @@ export function CartoesControleScreen() {
 
   const mesesDisponiveis = OPCOES_MESES_CONTROLE
   const itensDoMes = [...vigentes, ...detalhados].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-  const totalAPagar = itensDoMes.reduce((total, item) => total + (Number(item.valor) || 0), 0)
+  const totalAPagar = itensDoMes.reduce((total, item) => total + (item.situacao_pagamento === 'pago' ? 0 : Number(item.valor) || 0), 0)
   const chavesCartoesSelecionados = new Set(simulador.cartoes_selecionados)
   const cartoesSimuladorSelecionados = opcoesCartoesSimulador
     .filter((opcao) => chavesCartoesSelecionados.has(opcao.chave))
   const valorCartoesSimulador = cartoesSimuladorSelecionados
-    .reduce((total, opcao) => total + (Number(opcao.item.valor) || 0), 0)
+    .reduce((total, opcao) => total + (opcao.item.situacao_pagamento === 'pago' ? 0 : Number(opcao.item.valor) || 0), 0)
   const valorNumericoEntrada = (valor: string) => {
     const normalizado = valor.includes(',') ? valor.replace(/\./g, '').replace(',', '.') : valor
     return Number(normalizado) || 0
@@ -426,13 +433,35 @@ export function CartoesControleScreen() {
   const valorNegativoSimulador = valorCartoesSimulador + valorNumericoEntrada(valoresEntradaSimulador.valor_contas)
   const valorPositivoSimulador = totalDisponivelSimulador
   const valorNecessarioSimulador = valorNegativoSimulador - valorPositivoSimulador
+  const valorTransferenciaSelecionado = fontesSelecionadasSimulador.reduce((total, chave) => {
+    const valor = valorNumericoEntrada(valoresEntradaSimulador[chave])
+    return total + (chave === 'valor_contas' ? -valor : valor)
+  }, 0)
   const camposSimulador = [
     { chave: 'valor_contas' as const, titulo: 'Valor Contas', icone: 'receipt-outline' as const, cor: '#EF4444', fundo: '#FEE2E2' },
     { chave: 'valor_dinheiro' as const, titulo: 'Valor Dinheiro', icone: 'cash-outline' as const, cor: '#16A34A', fundo: '#DCFCE7' },
     { chave: 'valor_pix' as const, titulo: 'Valor PIX (Cair)', icone: 'flash-outline' as const, cor: '#D97706', fundo: '#FEF3C7' },
-    { chave: 'valor_conta_corrente' as const, titulo: 'Valor Conta Corrente', icone: 'business-outline' as const, cor: '#4F46E5', fundo: '#E0E7FF' },
-    { chave: 'valor_salario' as const, titulo: 'Valor Salário', icone: 'wallet-outline' as const, cor: '#9333EA', fundo: '#F3E8FF' }
+    { chave: 'valor_salario' as const, titulo: 'Valor Salário', icone: 'wallet-outline' as const, cor: '#9333EA', fundo: '#F3E8FF' },
+    { chave: 'valor_conta_corrente' as const, titulo: 'Valor Conta Corrente', icone: 'business-outline' as const, cor: '#4F46E5', fundo: '#E0E7FF' }
   ]
+
+  const alternarFonteTransferencia = (chave: CampoValorSimulador) => {
+    setFontesSelecionadasSimulador((atuais) => atuais.includes(chave)
+      ? atuais.filter((item) => item !== chave)
+      : [...atuais, chave])
+  }
+
+  const confirmarTransferenciaContaCorrente = () => {
+    if (fontesSelecionadasSimulador.length === 0 || valorTransferenciaSelecionado === 0) return
+    const saldoAtual = valorNumericoEntrada(valoresEntradaSimulador.valor_conta_corrente)
+    const novoSaldo = saldoAtual + valorTransferenciaSelecionado
+    const atualizado = { ...valoresEntradaSimulador, valor_conta_corrente: String(novoSaldo).replace('.', ',') }
+    fontesSelecionadasSimulador.forEach((chave) => {
+      atualizado[chave] = ''
+    })
+    setValoresEntradaSimulador(atualizado)
+    setFontesSelecionadasSimulador([])
+  }
 
   const alternarCartaoSimulador = (chave: string) => {
     const chavesValidas = new Set(opcoesCartoesSimulador.map((opcao) => opcao.chave))
@@ -536,11 +565,12 @@ export function CartoesControleScreen() {
 
         <View style={styles.tableCard}>
           <View style={[styles.tableHeaderSky, mesAtual !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
-            <Text style={[styles.colHeader, { flex: 1.25 }]}>Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.05 }]}>Valor Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Fech.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1 }]}>Data{'\n'}Pgto.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Status</Text>
+            <Text style={[styles.colHeader, { flex: 1.15 }]}>Cartão</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.95 }]}>Valor</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Fech.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Pgto.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.75 }]}>Status</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.48 }]}>Sit.</Text>
           </View>
 
           {itensDoMes.map((item) => (
@@ -549,13 +579,19 @@ export function CartoesControleScreen() {
               style={styles.tableRow}
               onPress={() => abrirModalEditar(item)}
             >
-              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 1.25 }]}>{item.cartao_nome}</Text>
-              <Text numberOfLines={1} style={[styles.cellText, styles.colRight, { flex: 1.05 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
-              <Text style={[styles.cellMuted, styles.colCenter, { flex: 1, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
+              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 1.15 }]}>{item.cartao_nome}</Text>
+              <Text numberOfLines={1} style={[styles.cellText, styles.colRight, { flex: 0.95 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
+              <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.85, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
                 {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
               </Text>
-              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 1 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
-              <View style={[styles.statusCell, { flex: 0.85 }]}><Text style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'Fechado' : 'Aberto'}</Text></View>
+              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.85 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
+              <View style={[styles.statusCell, { flex: 0.75 }]}><Text style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'Fechado' : 'Aberto'}</Text></View>
+              <View style={[styles.statusCell, { flex: 0.48 }]}>
+                <Text
+                  accessibilityLabel={`Situação: ${item.situacao_pagamento === 'pago' ? 'Pago' : item.situacao_pagamento === 'vencida' ? 'Vencida' : 'Não pago'}`}
+                  style={[styles.situacaoBadge, item.situacao_pagamento === 'pago' ? styles.situacaoBadgePago : item.situacao_pagamento === 'vencida' ? styles.situacaoBadgeVencida : styles.situacaoBadgeNaoPago]}
+                >{item.situacao_pagamento === 'pago' ? 'P' : item.situacao_pagamento === 'vencida' ? 'V' : 'NP'}</Text>
+              </View>
             </TouchableOpacity>
           ))}
 
@@ -629,6 +665,16 @@ export function CartoesControleScreen() {
             <View key={campo.chave}>
               <View style={styles.simulatorRow}>
                 <View style={styles.simulatorLabelGroup}>
+                  {['valor_contas', 'valor_dinheiro', 'valor_pix', 'valor_salario'].includes(campo.chave) && (
+                    <TouchableOpacity
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={`Selecionar ${campo.titulo} para atualizar conta corrente`}
+                      accessibilityState={{ checked: fontesSelecionadasSimulador.includes(campo.chave) }}
+                      onPress={() => alternarFonteTransferencia(campo.chave)}
+                    >
+                      <Ionicons name={fontesSelecionadasSimulador.includes(campo.chave) ? 'checkbox' : 'square-outline'} size={18} color={fontesSelecionadasSimulador.includes(campo.chave) ? colors.primary : colors.muted} />
+                    </TouchableOpacity>
+                  )}
                   <View style={[styles.simulatorIconCircle, { backgroundColor: campo.fundo }]}><Ionicons name={campo.icone} size={16} color={campo.cor} /></View>
                   <Text style={styles.simulatorRowLabel}>{campo.titulo}</Text>
                 </View>
@@ -658,12 +704,27 @@ export function CartoesControleScreen() {
                 <Text style={styles.simulatorNegativeSubtotalLabel}>Valor Negativo</Text>
                 <Text style={styles.simulatorNegativeSubtotalValue}>{formatarMoedaSimulador(valorNegativoSimulador)}</Text>
               </View>}
-              {campo.chave === 'valor_salario' && <View style={styles.simulatorPositiveSubtotalRow}>
+              {campo.chave === 'valor_conta_corrente' && <View style={styles.simulatorPositiveSubtotalRow}>
                 <Text style={styles.simulatorPositiveSubtotalLabel}>Valor Positivo</Text>
                 <Text style={styles.simulatorPositiveSubtotalValue}>{formatarMoedaSimulador(valorPositivoSimulador)}</Text>
               </View>}
             </View>
           ))}
+
+          {fontesSelecionadasSimulador.length > 0 && (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`Transferir ${formatarMoedaSimulador(Math.abs(valorTransferenciaSelecionado))} para conta corrente`}
+              disabled={valorTransferenciaSelecionado === 0}
+              style={[styles.simulatorTransferButton, valorTransferenciaSelecionado === 0 && styles.simulatorTransferButtonDisabled]}
+              onPress={confirmarTransferenciaContaCorrente}
+            >
+              <Ionicons name="swap-horizontal-outline" size={17} color="#FFFFFF" />
+              <Text style={styles.simulatorTransferButtonText}>
+                Transferir {valorTransferenciaSelecionado > 0 ? '+' : valorTransferenciaSelecionado < 0 ? '−' : ''}{formatarMoedaSimulador(Math.abs(valorTransferenciaSelecionado))} para conta corrente
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.simulatorNecessaryRow}>
             <View style={styles.simulatorLabelGroup}>
@@ -764,6 +825,17 @@ export function CartoesControleScreen() {
                   <TouchableOpacity onPress={() => setCampoCalendario(null)}><Text style={styles.calendarCloseText}>Fechar calendário</Text></TouchableOpacity>
                 </View>
               </View>}
+
+              <View style={styles.statusFormGroup}>
+                <Text style={styles.inputLabel}>Situação</Text>
+                <View style={styles.statusChoices}>
+                  {([['pago', 'Pago', styles.situacaoPagoAtiva], ['nao_pago', 'Não Pago', styles.situacaoNaoPagoAtiva], ['vencida', 'Vencida', styles.situacaoVencidaAtiva]] as const).map(([valor, rotulo, estiloAtivo]) => (
+                    <TouchableOpacity key={valor} accessibilityRole="radio" accessibilityState={{ checked: formSituacaoPagamento === valor }} style={[styles.statusChoice, formSituacaoPagamento === valor && estiloAtivo]} onPress={() => setFormSituacaoPagamento(valor)}>
+                      <Text style={[styles.statusChoiceText, formSituacaoPagamento === valor && styles.statusChoiceTextActive]}>{rotulo}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
 
               <View style={styles.statusFormGroup}>
                 <Text style={styles.inputLabel}>Status</Text>
@@ -1016,6 +1088,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center'
   },
+  situacaoBadge: {
+    minWidth: 25,
+    overflow: 'hidden',
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    borderRadius: 7,
+    fontSize: 10,
+    fontWeight: '900',
+    textAlign: 'center'
+  },
+  situacaoBadgePago: {
+    color: '#166534',
+    backgroundColor: '#DCFCE7'
+  },
+  situacaoBadgeNaoPago: {
+    color: '#92400E',
+    backgroundColor: '#FEF3C7'
+  },
+  situacaoBadgeVencida: {
+    color: '#B91C1C',
+    backgroundColor: '#FEE2E2'
+  },
   statusOpen: {
     color: '#166534',
     backgroundColor: '#DCFCE7'
@@ -1232,6 +1326,26 @@ const styles = StyleSheet.create({
   },
   simulatorEraseButtonDisabled: {
     opacity: 0.65
+  },
+  simulatorTransferButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    backgroundColor: '#059669'
+  },
+  simulatorTransferButtonDisabled: {
+    opacity: 0.5
+  },
+  simulatorTransferButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700'
   },
   simulatorNegativeSubtotalRow: {
     minHeight: 38,
@@ -1472,6 +1586,18 @@ const styles = StyleSheet.create({
   statusChoiceClosedActive: {
     backgroundColor: '#E2E8F0',
     borderColor: '#CBD5E1'
+  },
+  situacaoPagoAtiva: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#86EFAC'
+  },
+  situacaoNaoPagoAtiva: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FCD34D'
+  },
+  situacaoVencidaAtiva: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FCA5A5'
   },
   statusChoiceText: {
     color: colors.muted,

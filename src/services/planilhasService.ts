@@ -406,6 +406,7 @@ export async function salvarCartoesControle(
       pagamento: item.pagamento || null,
       fechamento_estimado: Boolean(item.fechamento_estimado),
       status: item.status || 'aberto',
+      situacao_pagamento: item.situacao_pagamento || 'nao_pago',
       atualizado_em_texto: item.atualizado_em_texto || null,
       // Dados locais antigos podem carregar um atualizado_em nulo; nunca envie
       // esse valor para a coluna NOT NULL da tabela.
