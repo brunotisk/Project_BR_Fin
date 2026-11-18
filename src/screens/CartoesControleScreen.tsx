@@ -97,8 +97,8 @@ type OpcaoCartaoSimulador = {
   item: CartaoControleItem
 }
 
-type CampoValorSimulador = 'valor_contas' | 'valor_dinheiro' | 'valor_pix' | 'valor_conta_corrente' | 'valor_salario'
-type ValoresEntradaSimulador = Record<CampoValorSimulador, string>
+type CampoValorSimulador = 'valor_cartoes' | 'valor_contas' | 'valor_dinheiro' | 'valor_pix' | 'valor_conta_corrente' | 'valor_salario'
+type ValoresEntradaSimulador = Record<Exclude<CampoValorSimulador, 'valor_cartoes'>, string>
 type SituacaoPagamentoCartao = 'pago' | 'nao_pago' | 'vencida'
 
 const SIMULADOR_INICIAL: DadosSimuladorCaixa = {
@@ -137,6 +137,7 @@ export function CartoesControleScreen() {
   const [fontesSelecionadasSimulador, setFontesSelecionadasSimulador] = useState<CampoValorSimulador[]>([])
   const [seletorCartoesAberto, setSeletorCartoesAberto] = useState(false)
   const [salvandoSimulador, setSalvandoSimulador] = useState(false)
+  const [resetandoSimulador, setResetandoSimulador] = useState(false)
 
   // Modal para adicionar/editar cartão
   const [modalVisible, setModalVisible] = useState(false)
@@ -423,17 +424,18 @@ export function CartoesControleScreen() {
   const cartoesSimuladorSelecionados = opcoesCartoesSimulador
     .filter((opcao) => chavesCartoesSelecionados.has(opcao.chave))
   const valorCartoesSimulador = cartoesSimuladorSelecionados
-    .reduce((total, opcao) => total + (opcao.item.situacao_pagamento === 'pago' ? 0 : Number(opcao.item.valor) || 0), 0)
+    .reduce((total, opcao) => total + (Number(opcao.item.valor) || 0), 0)
   const valorNumericoEntrada = (valor: string) => {
     const normalizado = valor.includes(',') ? valor.replace(/\./g, '').replace(',', '.') : valor
     return Number(normalizado) || 0
   }
   const totalDisponivelSimulador = ['valor_dinheiro', 'valor_pix', 'valor_conta_corrente', 'valor_salario']
-    .reduce((total, chave) => total + valorNumericoEntrada(valoresEntradaSimulador[chave as CampoValorSimulador]), 0)
+    .reduce((total, chave) => total + valorNumericoEntrada(valoresEntradaSimulador[chave as Exclude<CampoValorSimulador, 'valor_cartoes'>]), 0)
   const valorNegativoSimulador = valorCartoesSimulador + valorNumericoEntrada(valoresEntradaSimulador.valor_contas)
   const valorPositivoSimulador = totalDisponivelSimulador
   const valorNecessarioSimulador = valorNegativoSimulador - valorPositivoSimulador
   const valorTransferenciaSelecionado = fontesSelecionadasSimulador.reduce((total, chave) => {
+    if (chave === 'valor_cartoes') return total - valorCartoesSimulador
     const valor = valorNumericoEntrada(valoresEntradaSimulador[chave])
     return total + (chave === 'valor_contas' ? -valor : valor)
   }, 0)
@@ -457,9 +459,12 @@ export function CartoesControleScreen() {
     const novoSaldo = saldoAtual + valorTransferenciaSelecionado
     const atualizado = { ...valoresEntradaSimulador, valor_conta_corrente: String(novoSaldo).replace('.', ',') }
     fontesSelecionadasSimulador.forEach((chave) => {
-      atualizado[chave] = ''
+      if (chave !== 'valor_cartoes') atualizado[chave] = ''
     })
     setValoresEntradaSimulador(atualizado)
+    if (fontesSelecionadasSimulador.includes('valor_cartoes')) {
+      setSimulador((atual) => ({ ...atual, valor_cartoes: 0, cartoes_selecionados: [] }))
+    }
     setFontesSelecionadasSimulador([])
   }
 
@@ -474,6 +479,7 @@ export function CartoesControleScreen() {
   }
 
   const salvarDadosSimulador = async () => {
+    if (salvandoSimulador || resetandoSimulador) return
     const atualizado: DadosSimuladorCaixa = {
       ...simulador,
       valor_cartoes: valorCartoesSimulador,
@@ -500,6 +506,23 @@ export function CartoesControleScreen() {
       notify('Erro ao salvar simulador', erro?.message || 'Não foi possível gravar os dados no banco.')
     } finally {
       setSalvandoSimulador(false)
+    }
+  }
+
+  const resetarDadosSimulador = async () => {
+    if (salvandoSimulador || resetandoSimulador) return
+    setResetandoSimulador(true)
+    try {
+      await salvarSimuladorCaixa(SIMULADOR_INICIAL)
+      setSimulador(SIMULADOR_INICIAL)
+      setValoresEntradaSimulador({ valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: '' })
+      setValoresAnterioresSimulador({ valor_contas: '', valor_dinheiro: '', valor_pix: '', valor_conta_corrente: '', valor_salario: '' })
+      setFontesSelecionadasSimulador([])
+      notify('Simulador zerado', 'Todos os valores e cartões selecionados foram removidos do simulador.')
+    } catch (erro: any) {
+      notify('Erro ao zerar simulador', erro?.message || 'Não foi possível gravar os valores zerados no banco.')
+    } finally {
+      setResetandoSimulador(false)
     }
   }
 
@@ -585,7 +608,7 @@ export function CartoesControleScreen() {
                 {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
               </Text>
               <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.85 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
-              <View style={[styles.statusCell, { flex: 0.75 }]}><Text style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'Fechado' : 'Aberto'}</Text></View>
+              <View style={[styles.statusCell, { flex: 0.75 }]}><Text accessibilityLabel={`Status: ${item.status === 'fechado' ? 'Fechado' : 'Aberto'}`} style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'F' : 'A'}</Text></View>
               <View style={[styles.statusCell, { flex: 0.48 }]}>
                 <Text
                   accessibilityLabel={`Situação: ${item.situacao_pagamento === 'pago' ? 'Pago' : item.situacao_pagamento === 'vencida' ? 'Vencida' : 'Não pago'}`}
@@ -606,6 +629,25 @@ export function CartoesControleScreen() {
           </View>
         </View>
 
+        <View style={styles.legendCard}>
+          <Text style={styles.legendTitle}>Legenda</Text>
+          <View style={styles.legendSection}>
+            <Text style={styles.legendSectionTitle}>Status do cartão</Text>
+            <View style={styles.legendItems}>
+              <View style={styles.legendItem}><Text style={[styles.statusBadge, styles.statusOpen]}>A</Text><Text style={styles.legendDescription}>Aberto</Text></View>
+              <View style={styles.legendItem}><Text style={[styles.statusBadge, styles.statusClosed]}>F</Text><Text style={styles.legendDescription}>Fechado</Text></View>
+            </View>
+          </View>
+          <View style={styles.legendSection}>
+            <Text style={styles.legendSectionTitle}>Situação do pagamento</Text>
+            <View style={styles.legendItems}>
+              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgePago]}>P</Text><Text style={styles.legendDescription}>Pago</Text></View>
+              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeNaoPago]}>NP</Text><Text style={styles.legendDescription}>Não pago</Text></View>
+              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeVencida]}>V</Text><Text style={styles.legendDescription}>Vencida</Text></View>
+            </View>
+          </View>
+        </View>
+
         <View style={styles.simulatorCard}>
           <View style={styles.simulatorHeader}>
             <Text style={styles.simulatorHeaderTitle}>Contas</Text>
@@ -614,6 +656,14 @@ export function CartoesControleScreen() {
 
           <View style={styles.simulatorRow}>
             <View style={styles.simulatorLabelGroup}>
+              <TouchableOpacity
+                accessibilityRole="checkbox"
+                accessibilityLabel="Selecionar valor dos cartões para baixar da conta corrente"
+                accessibilityState={{ checked: fontesSelecionadasSimulador.includes('valor_cartoes') }}
+                onPress={() => alternarFonteTransferencia('valor_cartoes')}
+              >
+                <Ionicons name={fontesSelecionadasSimulador.includes('valor_cartoes') ? 'checkbox' : 'square-outline'} size={18} color={fontesSelecionadasSimulador.includes('valor_cartoes') ? colors.primary : colors.muted} />
+              </TouchableOpacity>
               <View style={[styles.simulatorIconCircle, { backgroundColor: '#E0F2FE' }]}><Ionicons name="card" size={16} color="#0284C7" /></View>
               <Text style={styles.simulatorRowLabel}>Valor Cartões</Text>
             </View>
@@ -734,15 +784,27 @@ export function CartoesControleScreen() {
             <Text style={styles.simulatorNecessaryValue}>{formatarMoedaSimulador(valorNecessarioSimulador)}</Text>
           </View>
 
-          <TouchableOpacity
-            accessibilityRole="button"
-            disabled={salvandoSimulador}
-            style={[styles.simulatorSaveButton, salvandoSimulador && { opacity: 0.6 }]}
-            onPress={() => void salvarDadosSimulador()}
-          >
-            <Ionicons name="save-outline" size={17} color="#FFFFFF" />
-            <Text style={styles.simulatorSaveButtonText}>{salvandoSimulador ? 'Salvando…' : 'Salvar simulador'}</Text>
-          </TouchableOpacity>
+          <View style={styles.simulatorActions}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={salvandoSimulador || resetandoSimulador}
+              style={[styles.simulatorSaveButton, (salvandoSimulador || resetandoSimulador) && styles.simulatorActionDisabled]}
+              onPress={() => void salvarDadosSimulador()}
+            >
+              <Ionicons name="save-outline" size={17} color="#FFFFFF" />
+              <Text style={styles.simulatorSaveButtonText}>{salvandoSimulador ? 'Salvando…' : 'Salvar simulador'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Zerar todos os valores e cartões selecionados do simulador"
+              disabled={salvandoSimulador || resetandoSimulador}
+              style={[styles.simulatorResetButton, (salvandoSimulador || resetandoSimulador) && styles.simulatorActionDisabled]}
+              onPress={() => void resetarDadosSimulador()}
+            >
+              <Ionicons name="refresh-outline" size={17} color={colors.primary} />
+              <Text style={styles.simulatorResetButtonText}>{resetandoSimulador ? 'Zerando…' : 'Zerar simulador'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
       </ScrollView>
@@ -1111,8 +1173,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEE2E2'
   },
   statusOpen: {
-    color: '#166534',
-    backgroundColor: '#DCFCE7'
+    color: '#0369A1',
+    backgroundColor: '#E0F2FE'
   },
   statusClosed: {
     color: '#475569',
@@ -1138,6 +1200,47 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     color: colors.primary
+  },
+  legendCard: {
+    width: '100%',
+    alignSelf: 'stretch',
+    marginTop: 8,
+    padding: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: 11
+  },
+  legendTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.text
+  },
+  legendSection: {
+    gap: 7
+  },
+  legendSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 16,
+    rowGap: 8
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7
+  },
+  legendDescription: {
+    fontSize: 11,
+    color: colors.textSecondary
   },
   simulatorCard: {
     width: '100%',
@@ -1415,18 +1518,45 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'right'
   },
+  simulatorActions: {
+    flexDirection: 'row',
+    gap: 8,
+    margin: 12
+  },
   simulatorSaveButton: {
+    flex: 1,
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    margin: 12,
+    paddingHorizontal: 6,
     borderRadius: 10,
     backgroundColor: colors.primary
   },
+  simulatorResetButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+    backgroundColor: '#E0F2FE'
+  },
+  simulatorActionDisabled: {
+    opacity: 0.6
+  },
   simulatorSaveButtonText: {
     color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  simulatorResetButtonText: {
+    color: '#0369A1',
     fontSize: 13,
     fontWeight: '800'
   },
@@ -1580,8 +1710,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   statusChoiceOpenActive: {
-    backgroundColor: '#DCFCE7',
-    borderColor: '#86EFAC'
+    backgroundColor: '#E0F2FE',
+    borderColor: '#7DD3FC'
   },
   statusChoiceClosedActive: {
     backgroundColor: '#E2E8F0',

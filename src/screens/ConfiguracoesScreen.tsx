@@ -4,6 +4,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { supabase } from '../services/supabase'
+import { databaseProvider } from '../services/databaseProvider'
 import { useAuth } from '../services/AuthProvider'
 import { colors } from '../theme'
 import { Button } from '../components/Button'
@@ -104,10 +105,27 @@ export function ConfiguracoesScreen() {
   async function atualizarDadosDoBanco() {
     if (!session?.user.id) { notify('Sessão necessária', 'Entre na sua conta para atualizar os dados.'); return }
     setAtualizandoDados(true)
-    const { error } = await supabase.from('profiles').select('id').eq('id', session.user.id).maybeSingle()
-    if (error) {
+    const nomeBanco = databaseProvider === 'nhost' ? 'Nhost' : 'Supabase'
+    const { data: perfil, error: erroPerfil } = await supabase.from('profiles').select('id').eq('id', session.user.id).maybeSingle()
+    if (erroPerfil) {
       setAtualizandoDados(false)
-      notify('Não foi possível conectar', 'O cache foi mantido. Confira a conexão e tente novamente.')
+      notify(`Falha GraphQL em profiles (${nomeBanco})`, `${erroPerfil.message} O cache local foi mantido.`)
+      return
+    }
+    if (!perfil) {
+      setAtualizandoDados(false)
+      notify('Perfil não encontrado no banco', `O ${nomeBanco} respondeu, mas não retornou o perfil desta sessão. Verifique o usuário e as permissões de leitura do Hasura.`)
+      return
+    }
+    const { data: categoriasVisiveis, error: erroCategorias } = await supabase.from('categorias').select('id').limit(1)
+    if (erroCategorias) {
+      setAtualizandoDados(false)
+      notify(`Falha GraphQL em categorias (${nomeBanco})`, `${erroCategorias.message} O cache local foi mantido.`)
+      return
+    }
+    if (!categoriasVisiveis?.length) {
+      setAtualizandoDados(false)
+      notify('Dados não visíveis no banco', `O perfil foi localizado no ${nomeBanco}, mas nenhuma categoria está visível para esta sessão. Verifique as permissões do Hasura e o usuário_id dos dados importados.`)
       return
     }
     limparCacheDadosRemotos()
@@ -116,7 +134,7 @@ export function ConfiguracoesScreen() {
       return
     }
     setAtualizandoDados(false)
-    notify('Cache atualizado', 'Feche e reabra o aplicativo para carregar os dados do Supabase.')
+    notify('Cache atualizado', `Feche e reabra o aplicativo para carregar os dados do ${nomeBanco}.`)
   }
 
   function adicionarLocalPoker() {
@@ -329,7 +347,7 @@ export function ConfiguracoesScreen() {
         <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="apps-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Acesso às telas</Text><Text style={styles.itemSub}>As abas ficam no menu; desative para bloquear o acesso.</Text></View></View>
           {([['todo', 'Todo List', 'Lista de tarefas'], ['agenda', 'Agenda', 'Calendário compartilhado'], ['financeiro', 'Financeiro', 'Resumo, cartões e Poker']] as [ModuleKey, string, string][]).map(([modulo, titulo, descricao]) => <View key={modulo} style={styles.accessRow}><View style={styles.accessInfo}><Text style={styles.accessTitle}>{titulo}</Text><Text style={styles.itemSub}>{descricao}</Text></View><Switch accessibilityLabel={`Acesso a ${titulo}`} disabled={!acessoCarregado} value={acesso[modulo]} onValueChange={(ativo) => void definirAcesso(modulo, ativo)} trackColor={{ false: '#CBD5E1', true: colors.primary }} thumbColor="#fff" /></View>)}
         </View>
-        <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="sync-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Sincronizar dados</Text><Text style={styles.itemSub}>Limpa caches locais e recarrega os dados do Supabase.</Text></View></View><Button title={atualizandoDados ? 'Atualizando…' : 'Atualizar dados do banco'} onPress={() => void atualizarDadosDoBanco()} loading={atualizandoDados} /></View>
+        <View style={styles.card}><View style={styles.heading}><View style={styles.icon}><Ionicons name="sync-outline" size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Sincronizar dados</Text><Text style={styles.itemSub}>Banco ativo: {databaseProvider === 'nhost' ? 'Nhost' : 'Supabase'}. Verifica o perfil e categorias, limpa caches locais e recarrega o app.</Text></View></View><Button title={atualizandoDados ? 'Verificando…' : 'Atualizar dados do banco'} onPress={() => void atualizarDadosDoBanco()} loading={atualizandoDados} /></View>
       </>}
 
     </ScrollView>

@@ -1,6 +1,6 @@
 # App Financeiro
 
-Aplicativo mobile-first para controle financeiro pessoal/SaaS, com React Native + Expo (SDK 57) + TypeScript + Supabase.
+Aplicativo mobile-first para controle financeiro pessoal/SaaS, com React Native + Expo + TypeScript. O backend pode ser selecionado entre Supabase e Nhost por variável de ambiente.
 
 ## Estrutura
 
@@ -17,9 +17,12 @@ Aplicativo mobile-first para controle financeiro pessoal/SaaS, com React Native 
 
 1. Tenha Node.js LTS instalado.
 2. Copie `.env.example` para `.env`.
-3. Preencha `EXPO_PUBLIC_SUPABASE_URL` e `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` com os dados do projeto Supabase
+3. Defina `EXPO_PUBLIC_DATABASE_PROVIDER` como `supabase` ou `nhost`.
+4. Para Supabase, preencha `EXPO_PUBLIC_SUPABASE_URL` e `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    (Project Settings → API). Use apenas a chave **publicável**; nunca coloque a `secret`/`service_role` no app.
-4. Instale as dependências:
+   Para Nhost, preencha `EXPO_PUBLIC_NHOST_SUBDOMAIN` e `EXPO_PUBLIC_NHOST_REGION`. O adapter Nhost e
+   as permissões GraphQL precisam estar configurados para selecionar esse provedor.
+5. Instale as dependências:
 
 ```bash
 npm install
@@ -50,6 +53,21 @@ Depois de aplicar as migrations, gere os tipos do banco:
 ```bash
 npx supabase gen types typescript --linked > src/types/database.ts
 ```
+
+## Preparação do schema no Nhost
+
+O schema do app é aplicado usando `EXPO_CS_NHOST`, que deve ficar somente no `.env` local. O script
+recusa executar se já houver tabelas no schema `public`, para evitar conflito com dados existentes.
+
+```bash
+node --env-file=.env scripts/migrate-nhost-schema.mjs
+npm run nhost:rpc-schema
+npm run nhost:metadata
+```
+
+`ADM_SECRET_HASURA_NHOST` é usado apenas pelos scripts administrativos e nunca deve ter o prefixo `EXPO_PUBLIC_`.
+O adaptador de compatibilidade traduz consultas, RPCs, autenticação e storage para Nhost. Para voltar ao Supabase,
+defina `EXPO_PUBLIC_DATABASE_PROVIDER=supabase` e reinicie o Expo.
 
 ### Migrations
 

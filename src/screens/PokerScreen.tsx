@@ -268,7 +268,7 @@ export function PokerScreen() {
 
   const [mesFiltro, setMesFiltro] = useState<string>('Todos')
   const [filtroMesAberto, setFiltroMesAberto] = useState(false)
-  const [mesGraficoFiltro, setMesGraficoFiltro] = useState(mesBaseHojeKey())
+  const [mesGraficoFiltro, setMesGraficoFiltro] = useState('Todos')
   const [filtroMesGraficoAberto, setFiltroMesGraficoAberto] = useState(false)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)

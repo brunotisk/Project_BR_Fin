@@ -175,6 +175,20 @@ export function PloCalculator() {
     setResults(null)
   }
 
+  const gerarFlopAleatorio = () => {
+    const cartasOcupadas = new Set<number>()
+    players.forEach((player) => player.cards.forEach((card) => { if (card !== null) cartasOcupadas.add(card) }))
+    board.slice(3).forEach((card) => { if (card !== null) cartasOcupadas.add(card) })
+    const cartasDisponiveis = Array.from({ length: 52 }, (_, cardId) => cardId).filter((cardId) => !cartasOcupadas.has(cardId))
+    for (let index = cartasDisponiveis.length - 1; index > 0; index--) {
+      const randomIndex = Math.floor(Math.random() * (index + 1))
+      ;[cartasDisponiveis[index], cartasDisponiveis[randomIndex]] = [cartasDisponiveis[randomIndex], cartasDisponiveis[index]]
+    }
+    const flop = cartasDisponiveis.slice(0, 3)
+    setBoard((current) => [flop[0], flop[1], flop[2], current[3], current[4]])
+    setResults(null)
+  }
+
   // Limpar Tudo (Reset)
   const limparTudo = () => {
     setPlayers((prev) =>
@@ -316,8 +330,8 @@ export function PloCalculator() {
           </View>
           <Text style={styles.subtitle}>
             {variant === 'holdem'
-              ? "Texas Hold'em (2 cartas) • Heads-up e Multiway"
-              : `Pot-Limit Omaha (${reqCardCount} cartas) • Heads-up e Multiway`}
+              ? "Texas Hold'em (2 cartas)"
+              : `Pot-Limit Omaha (${reqCardCount} cartas)`}
           </Text>
         </View>
 
@@ -354,12 +368,18 @@ export function PloCalculator() {
         <View style={styles.boardHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="albums-outline" size={16} color={colors.primary} />
-            <Text style={styles.boardTitle}>Board (Mesa Comunitária)</Text>
+              <Text style={styles.boardTitle}>Board</Text>
           </View>
 
-          <TouchableOpacity onPress={limparBoard} style={styles.btnLimparPequeno}>
-            <Text style={styles.btnLimparPequenoTexto}>Limpar mesa</Text>
-          </TouchableOpacity>
+          <View style={styles.boardActions}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Gerar flop aleatório" onPress={gerarFlopAleatorio} style={styles.btnFlopAleatorio}>
+              <Ionicons name="shuffle-outline" size={13} color="#BAE6FD" />
+              <Text style={styles.btnLimparPequenoTexto}>Aleatório</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Limpar mesa" onPress={limparBoard} style={styles.btnLimparPequeno}>
+              <Text style={styles.btnLimparPequenoTexto}>Limpar mesa</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Slots de cartas do Board: Flop (3), Turn (1), River (1) */}
@@ -524,29 +544,26 @@ export function PloCalculator() {
       <Modal visible={pickerVisible} transparent animationType="fade">
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerCard}>
-            {/* Topo do Picker */}
             <View style={styles.pickerHeader}>
-              <View>
-                <Text style={styles.pickerTitle}>Selecionar Carta</Text>
-                <Text style={styles.pickerSub}>
-                  {!activeSlot
-                    ? 'Todas as posições foram preenchidas'
-                    : activeSlot.type === 'player'
-                      ? `Hand P${activeSlot.playerIndex + 1} • Carta ${activeSlot.cardIndex + 1}`
-                      : `Board • Carta ${activeSlot.cardIndex + 1}`}
-                </Text>
-              </View>
-
-              <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.pickerCloseBtn}>
-                <Ionicons name="close" size={22} color={colors.text} />
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar seletor de cartas" onPress={() => setPickerVisible(false)} style={styles.pickerCloseBtn}>
+                <Ionicons name="close" size={23} color={colors.text} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.pickerSectionTitle}>Preenchendo</Text>
-            <ScrollView style={styles.pickerTargets} nestedScrollEnabled>
+            <View style={styles.pickerTargets}>
+              <View style={[styles.pickerTargetGroup, styles.pickerBoardGroup]}>
+                <Text numberOfLines={1} style={[styles.pickerTargetLabel, styles.pickerBoardLabel]}>Board</Text>
+                <View style={styles.pickerTargetSlots}>
+                  {board.map((cardId, cardIndex) => (
+                    <View key={cardIndex}>
+                      {renderCardSlot(cardId, () => setActiveSlot({ type: 'board', cardIndex }), activeSlot?.type === 'board' && activeSlot.cardIndex === cardIndex, 'small')}
+                    </View>
+                  ))}
+                </View>
+              </View>
               {players.map((player, playerIndex) => (
                 <View key={player.id} style={styles.pickerTargetGroup}>
-                  <Text style={styles.pickerTargetLabel}>Hand P{playerIndex + 1} · {player.name}</Text>
+                  <Text numberOfLines={1} style={styles.pickerTargetLabel}>Hand P{playerIndex + 1} · {player.name}</Text>
                   <View style={styles.pickerTargetSlots}>
                     {player.cards.map((cardId, cardIndex) => (
                       <View key={cardIndex}>
@@ -556,17 +573,7 @@ export function PloCalculator() {
                   </View>
                 </View>
               ))}
-              <View style={styles.pickerTargetGroup}>
-                <Text style={styles.pickerTargetLabel}>Board</Text>
-                <View style={styles.pickerTargetSlots}>
-                  {board.map((cardId, cardIndex) => (
-                    <View key={cardIndex}>
-                      {renderCardSlot(cardId, () => setActiveSlot({ type: 'board', cardIndex }), activeSlot?.type === 'board' && activeSlot.cardIndex === cardIndex, 'small')}
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </ScrollView>
+            </View>
 
             {/* Ações rápidas no modal */}
             <View style={styles.pickerActionsRow}>
@@ -586,9 +593,6 @@ export function PloCalculator() {
               <View style={styles.deckGrid}>
                 {SUITS.map((suit) => (
                   <View key={suit} style={styles.suitColumn}>
-                    <View style={[styles.suitIndicator, { backgroundColor: SUIT_COLORS[suit] + '15' }]}>
-                      <Text style={[styles.suitIndicatorSymbol, { color: SUIT_COLORS[suit] }]}>{SUIT_SYMBOLS[suit]}</Text>
-                    </View>
                     {[...RANKS].reverse().map((rank) => {
                       const rIdx = RANKS.indexOf(rank)
                       const sIdx = SUITS.indexOf(suit)
@@ -701,6 +705,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10
   },
+  boardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
   boardTitle: {
     fontSize: 13,
     fontWeight: '700',
@@ -711,6 +720,15 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     backgroundColor: 'rgba(255,255,255,0.1)'
+  },
+  btnFlopAleatorio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: 'rgba(14,165,233,0.22)'
   },
   btnLimparPequenoTexto: {
     fontSize: 10,
@@ -758,8 +776,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   cardSlotEmptySmall: {
-    width: 38,
-    height: 50
+    width: 30,
+    height: 40
   },
   cardSlotFilled: {
     width: 44,
@@ -777,8 +795,8 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   cardSlotFilledSmall: {
-    width: 38,
-    height: 50
+    width: 30,
+    height: 40
   },
   cardSlotSelected: {
     borderColor: '#FACC15',
@@ -791,8 +809,8 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   cardRankSmall: {
-    fontSize: 15,
-    lineHeight: 18
+    fontSize: 13,
+    lineHeight: 15
   },
   cardSymbol: {
     fontSize: 16,
@@ -800,8 +818,8 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   cardSymbolSmall: {
-    fontSize: 14,
-    lineHeight: 16
+    fontSize: 12,
+    lineHeight: 14
   },
 
   /* Players */
@@ -960,37 +978,37 @@ const styles = StyleSheet.create({
   pickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 12
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    padding: 0
   },
   pickerCard: {
     width: '100%',
-    maxWidth: 580,
-    maxHeight: '92%',
+    height: '100%',
+    maxHeight: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 0,
+    padding: 12,
+    flexShrink: 1,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 10,
     elevation: 8
   },
   pickerHeader: {
+    height: 26,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 5
   },
-  pickerTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.text
-  },
-  pickerSub: {
-    fontSize: 11,
-    color: colors.muted,
-    marginTop: 1
+  pickerCloseBtn: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    backgroundColor: '#F1F5F9'
   },
   pickerSectionTitle: {
     color: colors.text,
@@ -999,28 +1017,42 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   pickerTargets: {
-    maxHeight: 185,
-    marginBottom: 10
+    marginBottom: 7,
+    gap: 3
   },
   pickerTargetGroup: {
-    marginBottom: 8
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5
+  },
+  pickerBoardGroup: {
+    minHeight: 50,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderRadius: 9,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155'
   },
   pickerTargetLabel: {
+    width: 86,
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
-    marginBottom: 4
+    flexShrink: 1
+  },
+  pickerBoardLabel: {
+    color: '#E2E8F0'
   },
   pickerTargetSlots: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4
+    flex: 1,
+    gap: 2
   },
   deckScroll: {
-    maxHeight: 390
-  },
-  pickerCloseBtn: {
-    padding: 4
+    flex: 1,
+    minHeight: 0
   },
   pickerActionsRow: {
     flexDirection: 'row',
@@ -1065,17 +1097,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'stretch',
     gap: 3
-  },
-  suitIndicator: {
-    height: 30,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2
-  },
-  suitIndicatorSymbol: {
-    fontSize: 18,
-    fontWeight: '900'
   },
   deckCardBtn: {
     height: 38,

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type PropsWithChildren } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { databaseProvider } from './databaseProvider'
 
 type AuthContextValue = {
   session: Session | null
@@ -13,6 +14,18 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
+async function ensureNhostProfile(user: any) {
+  if (databaseProvider !== 'nhost' || !user?.id) return
+  const { data, error } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle()
+  if (error || data) return
+  const metadata = user.user_metadata || {}
+  await supabase.from('profiles').insert({
+    id: user.id,
+    nome: metadata.nome || user.displayName || null,
+    email: user.email || null
+  })
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
@@ -20,11 +33,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
+      void ensureNhostProfile(data.session?.user)
       setLoading(false)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession)
+      void ensureNhostProfile(nextSession?.user)
     })
 
     return () => listener.subscription.unsubscribe()
@@ -41,6 +56,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       password,
       options: nome?.trim() ? { data: { nome: nome.trim() } } : undefined
     })
+    if (!error && databaseProvider === 'nhost') {
+      const { data } = await supabase.auth.getSession()
+      await ensureNhostProfile(data.session?.user)
+    }
     return { error: error ? new Error(error.message) : null }
   }
 
