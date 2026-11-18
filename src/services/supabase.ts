@@ -35,6 +35,14 @@ if (databaseProvider === 'supabase') {
     else client.auth.stopAutoRefresh()
   })
 } else {
+  const nhostSubdomain = process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN
+  const nhostRegion = process.env.EXPO_PUBLIC_NHOST_REGION
+  if (!nhostSubdomain || !nhostRegion) {
+    throw new Error(
+      'Variáveis do Nhost ausentes. Configure EXPO_PUBLIC_NHOST_SUBDOMAIN e ' +
+        'EXPO_PUBLIC_NHOST_REGION no ambiente de build e publique novamente.'
+    )
+  }
   client = nhostCompat
 }
 

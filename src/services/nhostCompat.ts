@@ -3,11 +3,12 @@ import { createClient } from '@nhost/nhost-js'
 const subdomain = process.env.EXPO_PUBLIC_NHOST_SUBDOMAIN
 const region = process.env.EXPO_PUBLIC_NHOST_REGION
 
-if (!subdomain || !region) {
-  throw new Error('Configure EXPO_PUBLIC_NHOST_SUBDOMAIN e EXPO_PUBLIC_NHOST_REGION para usar o Nhost.')
-}
-
-export const nhost = createClient({ subdomain, region })
+// Este módulo também é importado estaticamente quando o provedor ativo é Supabase.
+// Deixe o cliente local inerte nesse caso; a configuração obrigatória é validada
+// em supabase.ts somente quando o provedor Nhost está selecionado.
+export const nhost = subdomain && region
+  ? createClient({ subdomain, region })
+  : createClient({ subdomain: 'local', region: 'local' })
 
 type Filter = { column: string; operator: string; value: unknown }
 type Sort = { column: string; direction: 'asc' | 'desc' }
