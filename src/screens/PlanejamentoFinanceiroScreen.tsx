@@ -12,6 +12,7 @@ import {
   type LinhaPlanejamento,
   type SecaoPlanejamento
 } from '../services/planilhasService'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 
 const ROW_H = 38
 const COL_NOME = 168
@@ -55,14 +56,14 @@ function formatarCelula(valor: number, secao: SecaoPlanejamento | 'saldo') {
   return valor < 0 ? `-${numeroFmt.format(-valor)}` : numeroFmt.format(valor)
 }
 
-function CelulaValor({ valor, secao, onChange }: { valor: number | undefined; secao: SecaoPlanejamento; onChange: (v: number | null) => void }) {
+function CelulaValor({ valor, secao, largura, onChange }: { valor: number | undefined; secao: SecaoPlanejamento; largura: number; onChange: (v: number | null) => void }) {
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState('')
   const v = valor || 0
   const negativo = v < 0
   return (
     <TextInput
-      style={[styles.celula, styles.celulaInput, editando && styles.celulaEditando, !editando && negativo && { color: colors.expense }]}
+      style={[styles.celula, { width: largura }, styles.celulaInput, editando && styles.celulaEditando, !editando && negativo && { color: colors.expense }]}
       value={editando ? texto : formatarCelula(v, secao)}
       onFocus={() => { setEditando(true); setTexto(v ? String(v).replace('.', ',') : '') }}
       onChangeText={setTexto}
@@ -83,16 +84,30 @@ export function PlanejamentoFinanceiroScreen() {
   const [linhaEditando, setLinhaEditando] = useState<LinhaPlanejamento | null>(null)
   const [mesEditando, setMesEditando] = useState<string | null>(null)
   const [seletorMeses, setSeletorMeses] = useState(false)
+  const { modo } = useLayoutMode()
+  // No computador há espaço para colunas mais largas.
+  const colMes = modo === 'desktop' ? 132 : COL_MES
+  const colNome = modo === 'desktop' ? 240 : COL_NOME
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendente = useRef<DadosPlanejamento | null>(null)
 
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null)
+  const [tentativa, setTentativa] = useState(0)
+
   useFocusEffect(useCallback(() => {
     let ativo = true
-    carregarPlanejamento()
+    setErroCarregamento(null)
+    // Sem resposta em 20s, mostra erro em vez de deixar a tela girando para sempre.
+    const limite = new Promise<never>((_, rejeitar) => setTimeout(() => rejeitar(new Error('O banco demorou demais para responder.')), 20000))
+    Promise.race([carregarPlanejamento(), limite])
       .then((p) => { if (ativo && !pendente.current) setPlano(p) })
-      .catch((err) => { console.warn('Erro ao carregar planejamento:', err); notify('Erro', 'Não foi possível carregar o planejamento.') })
+      .catch((err) => {
+        console.warn('Erro ao carregar planejamento:', err)
+        // Não cai para um plano vazio: o salvamento automático poderia sobrescrever o plano do banco.
+        if (ativo) setErroCarregamento(err?.message || String(err))
+      })
     return () => { ativo = false }
-  }, []))
+  }, [tentativa]))
 
   const salvarAgora = useCallback(async () => {
     const alvo = pendente.current
@@ -139,7 +154,16 @@ export function PlanejamentoFinanceiroScreen() {
   }, [plano, entradas, gastos])
 
   if (!plano) {
-    return <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={colors.primary} /></View>
+    return <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 }]}>
+      {erroCarregamento ? <>
+        <Ionicons name="cloud-offline-outline" size={32} color={colors.expense} />
+        <Text style={[styles.title, { fontSize: 16, textAlign: 'center' }]}>Não foi possível carregar o planejamento</Text>
+        <Text style={[styles.subtitle, { textAlign: 'center' }]}>{erroCarregamento}</Text>
+        <TouchableOpacity style={styles.botaoPrimario} onPress={() => { setErroCarregamento(null); setTentativa((t) => t + 1) }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Tentar novamente</Text>
+        </TouchableOpacity>
+      </> : <ActivityIndicator color={colors.primary} />}
+    </View>
   }
 
   const setValor = (id: string, mes: string, v: number | null) => atualizar((p) => ({
@@ -237,7 +261,7 @@ export function PlanejamentoFinanceiroScreen() {
     <View style={styles.linhaMeses}>
       {totaisVisiveis.map((t) => {
         const v = valor(t)
-        return <Text key={t.mes} style={[styles.celula, styles.celulaTotal, destaque && v < 0 && { color: colors.expense }, destaque && v > 0 && { color: colors.income }]}>{formatarCelula(v, secao)}</Text>
+        return <Text key={t.mes} style={[styles.celula, { width: colMes }, styles.celulaTotal, destaque && v < 0 && { color: colors.expense }, destaque && v > 0 && { color: colors.income }]}>{formatarCelula(v, secao)}</Text>
       })}
     </View>
   )
@@ -245,7 +269,9 @@ export function PlanejamentoFinanceiroScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={{ flex: 1 }}>
+        {/* Largura mínima: no celular o título fica numa linha e os botões quebram para baixo,
+            em vez de espremer o título até uma letra por linha. */}
+        <View style={styles.headerTitulo}>
           <Text style={styles.title}>Planejamento</Text>
           <Text style={styles.subtitle}>Projeção mensal de entradas e gastos{textoEstado ? ` · ${textoEstado}` : ''}</Text>
         </View>
@@ -263,8 +289,8 @@ export function PlanejamentoFinanceiroScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.tabela}>
           {/* Coluna fixa com os nomes */}
-          <View style={{ width: COL_NOME }}>
-            <View style={[styles.cabecalho, { width: COL_NOME }]} />
+          <View style={{ width: colNome }}>
+            <View style={[styles.cabecalho, { width: colNome }]} />
             <View style={styles.secaoTitulo}><Text style={styles.secaoTexto}>Total Entradas</Text>
               <TouchableOpacity onPress={() => adicionarLinha('entrada')} hitSlop={6}><Ionicons name="add-circle-outline" size={20} color={colors.primary} /></TouchableOpacity>
             </View>
@@ -286,7 +312,7 @@ export function PlanejamentoFinanceiroScreen() {
             <View>
               <View style={[styles.linhaMeses, styles.cabecalho]}>
                 {visiveis.map((m) => (
-                  <TouchableOpacity key={m} style={[styles.celula, { justifyContent: 'center' }]} onPress={() => setMesEditando(m)}>
+                  <TouchableOpacity key={m} style={[styles.celula, { width: colMes, justifyContent: 'center' }]} onPress={() => setMesEditando(m)}>
                     <Text style={[styles.mesTexto, m === mesAtual() && { color: colors.primary }]}>{rotuloMes(m)}</Text>
                   </TouchableOpacity>
                 ))}
@@ -294,7 +320,7 @@ export function PlanejamentoFinanceiroScreen() {
               <View style={styles.secaoTitulo} />
               {entradas.map((l) => (
                 <View key={l.id} style={styles.linhaMeses}>
-                  {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="entrada" onChange={(v) => setValor(l.id, m, v)} />)}
+                  {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="entrada" largura={colMes} onChange={(v) => setValor(l.id, m, v)} />)}
                 </View>
               ))}
               {linhaTotal((t) => t.ent, 'entrada')}
@@ -302,7 +328,7 @@ export function PlanejamentoFinanceiroScreen() {
               <View style={styles.secaoTitulo} />
               {gastos.map((l) => (
                 <View key={l.id} style={styles.linhaMeses}>
-                  {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="gasto" onChange={(v) => setValor(l.id, m, v)} />)}
+                  {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="gasto" largura={colMes} onChange={(v) => setValor(l.id, m, v)} />)}
                 </View>
               ))}
               {linhaTotal((t) => t.gas, 'gasto')}
@@ -454,6 +480,7 @@ function ModalLinha({ linha, onFechar, onSalvar, onExcluir, onReplicar }: {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 16, paddingBottom: 10, flexWrap: 'wrap' },
+  headerTitulo: { flexGrow: 1, flexShrink: 0, flexBasis: 260, minWidth: 0 },
   title: { fontSize: 20, fontWeight: '800', color: colors.text },
   subtitle: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   botaoMes: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },

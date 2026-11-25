@@ -1,6 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { ActivityIndicator, PanResponder, ScrollView, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, PanResponder, Text, TouchableOpacity, View } from 'react-native'
 import { useMemo } from 'react'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -16,6 +16,8 @@ import { colors } from '../theme'
 import { ModuleAccessProvider, useModuleAccess } from '../services/ModuleAccessProvider'
 import type { ModuleKey } from '../services/ModuleAccessProvider'
 import { notify } from '../utils/notify'
+import { useLayoutMode } from '../services/LayoutModeProvider'
+import { DesktopSidebar } from './DesktopSidebar'
 
 
 export type BottomTabParamList = {
@@ -28,11 +30,12 @@ export type BottomTabParamList = {
 
 const Tab = createBottomTabNavigator<BottomTabParamList>()
 
-function comSwipe(Screen: React.ComponentType<any>) {
+function comSwipe(Screen: React.ComponentType<any>, larguraMaximaDesktop = 1100) {
   return function SwipeableTab(props: any) {
     const navigation = useNavigation<any>()
     const route = useRoute()
     const { acesso, carregado } = useModuleAccess()
+    const { modo } = useLayoutMode()
     const ordem = ['TodoTab', 'AgendaTab', 'FinanceiroTab', 'ConfiguracoesTab']
     const pan = useMemo(() => PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => gesture.y0 < 72 && Math.abs(gesture.dx) > 70 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
@@ -49,14 +52,18 @@ function comSwipe(Screen: React.ComponentType<any>) {
         }
       }
     }), [navigation, route.name, acesso, carregado])
+    if (modo === 'desktop') {
+      // No computador não há gesto de deslizar; o conteúdo fica centralizado com largura máxima.
+      return <View style={{ flex: 1, backgroundColor: colors.background }}><View style={{ flex: 1, width: '100%', maxWidth: larguraMaximaDesktop, alignSelf: 'center' }}><Screen {...props} /></View></View>
+    }
     return <View style={{ flex: 1 }} {...pan.panHandlers}><Screen {...props} /></View>
   }
 }
 
 const SwipeTodo = comSwipe(TodoListScreen)
 const SwipeAgenda = comSwipe(AgendaScreen)
-const SwipeFinanceiro = comSwipe(FinanceiroNavigator)
-const SwipeConfiguracoes = comSwipe(ConfiguracoesScreen)
+const SwipeFinanceiro = comSwipe(FinanceiroNavigator, 1600)
+const SwipeConfiguracoes = comSwipe(ConfiguracoesScreen, 960)
 
 export function TabNavigator() {
   return <ModuleAccessProvider><TabNavigatorContent /></ModuleAccessProvider>
@@ -65,6 +72,8 @@ export function TabNavigator() {
 function TabNavigatorContent() {
   const insets = useSafeAreaInsets()
   const { acesso, carregado } = useModuleAccess()
+  const { modo } = useLayoutMode()
+  const desktop = modo === 'desktop'
   // Use only the real safe-area inset. Adding a minimum on web created an
   // extra strip below the tab bar, making its bottom edge look clipped.
   const bottomInset = insets.bottom
@@ -77,8 +86,9 @@ function TabNavigatorContent() {
   } })
 
   return (
-    <Tab.Navigator initialRouteName={primeiraTelaAtiva} screenOptions={{
+    <Tab.Navigator initialRouteName={primeiraTelaAtiva} tabBar={desktop ? (props) => <DesktopSidebar {...props} acesso={acesso} /> : undefined} screenOptions={desktop ? { headerShown: false, tabBarPosition: 'left' } : {
       headerShown: false,
+      tabBarPosition: 'bottom',
       tabBarShowLabel: true,
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
@@ -132,12 +142,14 @@ type FinanceParamList = {
 const FinanceStack = createNativeStackNavigator<FinanceParamList>()
 
 function FinanceiroNavigator() {
-  return <FinanceStack.Navigator initialRouteName="PokerTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
+  // No computador as subabas ficam na barra lateral, então o cabeçalho com abas some.
+  const { modo } = useLayoutMode()
+  return <FinanceStack.Navigator initialRouteName="PokerTab" screenOptions={{ headerShown: modo !== 'desktop', header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><View style={{ flexDirection: 'row', paddingHorizontal: 6 }}>{([
     ['PokerTab', 'Poker'],
     ['CartoesTab', 'Cartões'],
     ['TransacoesTab', 'Transações'],
     ['PlanejamentoTab', 'Planejamento']
-  ] as const).map(([name, label]) => <TouchableOpacity key={name} onPress={() => navigation.navigate(name)} style={{ paddingHorizontal: 12, paddingVertical: 13, borderBottomWidth: route.name === name ? 2 : 0, borderBottomColor: colors.primary }}><Text style={{ color: route.name === name ? colors.primary : colors.muted, fontSize: 12, fontWeight: '700' }}>{label}</Text></TouchableOpacity>)}</ScrollView></View> }}>
+  ] as const).map(([name, label]) => <TouchableOpacity key={name} onPress={() => navigation.navigate(name)} style={{ flex: 1, alignItems: 'center', paddingHorizontal: 2, paddingVertical: 13, borderBottomWidth: route.name === name ? 2 : 0, borderBottomColor: colors.primary }}><Text numberOfLines={1} style={{ color: route.name === name ? colors.primary : colors.muted, fontSize: 11.5, fontWeight: '700' }}>{label}</Text></TouchableOpacity>)}</View></View> }}>
     <FinanceStack.Screen name="PokerTab" component={PokerScreen} />
     <FinanceStack.Screen name="CartoesTab" component={CartoesControleScreen} />
     <FinanceStack.Screen name="TransacoesTab" component={TransacoesScreen} />

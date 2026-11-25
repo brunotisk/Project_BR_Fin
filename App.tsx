@@ -7,16 +7,19 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { AuthProvider } from './src/services/AuthProvider'
 import { AppNavigator } from './src/navigation/AppNavigator'
+import { LayoutModeProvider } from './src/services/LayoutModeProvider'
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <AppNavigator />
-        </NavigationContainer>
-      </AuthProvider>
+      <LayoutModeProvider>
+        <AuthProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <AppNavigator />
+          </NavigationContainer>
+        </AuthProvider>
+      </LayoutModeProvider>
     </SafeAreaProvider>
   )
 }

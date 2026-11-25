@@ -8,6 +8,7 @@ import { Transacao } from '../types'
 import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { formatarData } from '../utils/datas'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 
 interface TransacaoComRelacoes extends Transacao {
   contas?: { nome: string; cor: string | null } | null
@@ -37,6 +38,8 @@ interface CartaoAnalise {
 export function TransacoesScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<any>>()
   const [abaVisualizacao, setAbaVisualizacao] = useState<'lancamentos' | 'analise'>('lancamentos')
+  // No computador, lançamentos e análise aparecem lado a lado, sem alternância.
+  const desktop = useLayoutMode().modo === 'desktop'
   const [transacoes, setTransacoes] = useState<TransacaoComRelacoes[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -145,7 +148,7 @@ export function TransacoesScreen() {
       </View>
 
       {/* Alternância: Lançamentos vs Análise */}
-      <View style={styles.modoTabs}>
+      {!desktop && <View style={styles.modoTabs}>
         <TouchableOpacity
           onPress={() => setAbaVisualizacao('lancamentos')}
           style={[styles.modoTab, abaVisualizacao === 'lancamentos' && styles.modoTabAtivo]}
@@ -165,10 +168,12 @@ export function TransacoesScreen() {
             Análise de Gastos 📊
           </Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
-      {abaVisualizacao === 'lancamentos' ? (
-        <>
+      <View style={desktop ? styles.desktopColunas : { flex: 1 }}>
+      {(desktop || abaVisualizacao === 'lancamentos') && (
+        <View style={desktop ? styles.desktopColunaLista : { flex: 1 }}>
+          {desktop && <Text style={styles.desktopColunaTitulo}>Lançamentos ({transacoesFiltradas.length})</Text>}
           {/* Lista de Transações */}
           <FlatList
             data={transacoesFiltradas}
@@ -215,10 +220,11 @@ export function TransacoesScreen() {
               )
             }}
           />
-        </>
-      ) : (
+        </View>
+      )}
+      {(desktop || abaVisualizacao === 'analise') && (
         /* MODO ANÁLISE DE GASTOS */
-        <ScrollView contentContainerStyle={styles.analiseScroll}>
+        <ScrollView style={desktop ? styles.desktopColunaAnalise : undefined} contentContainerStyle={styles.analiseScroll}>
           {/* Card Resumo da Análise */}
           <View style={styles.analiseTotalCard}>
             <Text style={styles.analiseTotalLabel}>Total em Despesas Analisadas</Text>
@@ -298,11 +304,16 @@ export function TransacoesScreen() {
           )}
         </ScrollView>
       )}
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  desktopColunas: { flex: 1, flexDirection: 'row', gap: 20 },
+  desktopColunaLista: { flex: 1.3, minWidth: 0 },
+  desktopColunaAnalise: { flex: 1, minWidth: 0 },
+  desktopColunaTitulo: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 8 },
   container: {
     flex: 1,
     backgroundColor: colors.background,

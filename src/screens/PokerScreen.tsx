@@ -22,6 +22,7 @@ import { colors } from '../theme'
 import { formatCurrency } from '../utils/formatCurrency'
 import { notify } from '../utils/notify'
 import { hojeISO } from '../utils/datas'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 import {
   carregarCashoutsPoker,
   sincronizarCashoutsPoker,
@@ -245,6 +246,7 @@ function formatarValorPokerCompacto(valor: number) {
 }
 
 export function PokerScreen() {
+  const desktop = useLayoutMode().modo === 'desktop'
   const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes' | 'calc'>('resumido')
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
@@ -1056,8 +1058,8 @@ export function PokerScreen() {
           </View>
         </View>}
 
-        {visualizacaoSessoes === 'graficos' && <View style={styles.graphScreen}>
-          <View style={styles.graphFilterArea}>
+        {visualizacaoSessoes === 'graficos' && <View style={[styles.graphScreen, desktop && styles.desktopGrid]}>
+          <View style={[styles.graphFilterArea, desktop && { width: '100%' }]}>
             <Text style={styles.inputLabel}>Mês dos gráficos</Text>
             <TouchableOpacity
               accessibilityRole="button"
@@ -1081,7 +1083,7 @@ export function PokerScreen() {
               </TouchableOpacity>)}
             </ScrollView>}
           </View>
-          <View style={styles.graphCard}>
+          <View style={[styles.graphCard, desktop && styles.desktopGridItem]}>
             <Text style={styles.graphTitle}>Sessões por mês</Text>
             {dadosGraficosMensaisSelecionados.length === 0 ? <Text style={styles.graphEmpty}>Sem sessões no período selecionado.</Text> : dadosGraficosMensaisSelecionados.map((mes, index) => <View key={mes.mesBase} style={[styles.graphMonthlySessionRow, index === 0 && { borderTopWidth: 0 }]}>
               <Text numberOfLines={1} style={styles.graphMonthlySessionLabel}>{mes.label}</Text>
@@ -1089,7 +1091,7 @@ export function PokerScreen() {
               <Text style={styles.graphMonthlySessionCount}>{mes.quantidade}</Text>
             </View>)}
           </View>
-          <View style={styles.graphCard}>
+          <View style={[styles.graphCard, desktop && styles.desktopGridItem]}>
             <Text style={styles.graphTitle}>Buy-in e lucro por mês</Text>
             <View style={styles.graphLegend}>
               <View style={styles.graphLegendItem}><View style={[styles.graphLegendDot, { backgroundColor: '#0284C7' }]} /><Text style={styles.graphLegendText}>Buy-in</Text></View>
@@ -1123,7 +1125,7 @@ export function PokerScreen() {
               </View>
             })}
           </View>
-          <View style={styles.graphCard}>
+          <View style={[styles.graphCard, desktop && styles.desktopGridItem]}>
             <Text style={styles.graphTitle}>Resultado por clube</Text>
             {dadosGraficosLocais.length === 0
               ? <Text style={styles.graphEmpty}>Sem dados no período selecionado.</Text>
@@ -1133,7 +1135,7 @@ export function PokerScreen() {
               <Text style={[styles.graphResultValue, { color: local.net >= 0 ? '#15803D' : '#DC2626' }]}>{formatarResultadoPoker(local.net, formatoNegativoPoker)}</Text>
             </View>)}
           </View>
-          <View style={styles.graphCard}>
+          <View style={[styles.graphCard, desktop && styles.desktopGridItem]}>
             <Text style={styles.graphTitle}>Resultado por sessão</Text>
             <View style={styles.graphSortControls}>
               {([
@@ -1178,6 +1180,8 @@ export function PokerScreen() {
         {/* ======================================================== */}
         {/* SESSÕES POR DIA COM BOX DE RESUMO NO TOPO DA SESSÃO */}
         {/* ======================================================== */}
+        {/* No computador, o modo Resumo mostra as sessões em duas colunas. */}
+        <View style={desktop && visualizacaoSessoes === 'resumido' ? styles.desktopGrid : undefined}>
         {(visualizacaoSessoes === 'resumido' || visualizacaoSessoes === 'detalhado') && sessoesAgrupadas.map((sessao) => {
           const { data: dataSessao, mesBase: mesBaseSessao, itens } = sessao
           const buyInSessao = itens.reduce((s, it) => s + (Number(it.valor) || 0), 0)
@@ -1200,7 +1204,7 @@ export function PokerScreen() {
           const locaisSessaoVisiveis = ordenarLocaisPorCadastro(sessao.locais.map((local) => nomeLocalCanonico(local, configuracoesLocais)), configuracoesLocais)
 
           return (
-            <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta]}>
+            <View key={`${mesBaseSessao}|${dataSessao}`} style={[styles.sessaoCard, diaTravado ? styles.sessaoCardFechada : styles.sessaoCardAberta, desktop && visualizacaoSessoes === 'resumido' && styles.desktopGridItem]}>
               {/* CABEÇALHO DO DIA */}
               <View style={[styles.sessaoTopBar, diaTravado ? styles.sessaoTopBarFechada : styles.sessaoTopBarAberta, resumoFechado && styles.sessaoTopBarResumoFechado, detalhadoFechado && styles.sessaoTopBarDetalhadoFechado]}>
                 <View style={resumoFechado ? styles.sessaoDiaResumoFechado : detalhadoFechado ? styles.sessaoDiaDetalhadoFechado : { flex: 1, minWidth: 100, gap: 5 }}>
@@ -1411,6 +1415,7 @@ export function PokerScreen() {
             </View>
           )
         })}
+        </View>
 
         {sessoesAgrupadas.length === 0 && (
           <View style={styles.emptyContainer}>
@@ -2588,6 +2593,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FEF3C7'
   },
+  desktopGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' },
+  desktopGridItem: { width: '48.5%', flexGrow: 1, flexBasis: 420 },
   graphScreen: {
     gap: 12,
     marginBottom: 14

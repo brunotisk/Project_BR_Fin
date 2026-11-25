@@ -7,6 +7,7 @@ import { supabase } from '../services/supabase'
 import { colors } from '../theme'
 import { hojeISO, formatarData, FUSO_PADRAO } from '../utils/datas'
 import type { RootStackParamList } from '../navigation/AppNavigator'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 
 type Item = { id: string; tipo: string; titulo: string; descricao: string | null; data: string; horario: string | null; horario_fim: string | null; mostrar_na_agenda: boolean; mostrar_na_todo: boolean; usuario_id: string; responsavel_id: string | null; prioridade: 'baixa' | 'media' | 'alta' }
 type Membro = { usuario_id: string; cor: string }
@@ -21,8 +22,12 @@ const ALTURA_HORA = 64
 export function AgendaScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
   const { width } = useWindowDimensions()
+  const desktop = useLayoutMode().modo === 'desktop'
+  // No computador a tela tem barra lateral e largura máxima, então medimos a área real.
+  const [larguraArea, setLarguraArea] = useState(0)
+  const larguraUtil = larguraArea || width
   const [data, setData] = useState(hojeISO())
-  const [visualizacao, setVisualizacao] = useState<'dia' | 'semana'>('dia')
+  const [visualizacao, setVisualizacao] = useState<'dia' | 'semana'>(desktop ? 'semana' : 'dia')
   const [items, setItems] = useState<Item[]>([])
   const [membros, setMembros] = useState<Membro[]>([])
   const [pessoas, setPessoas] = useState<Pessoa[]>([])
@@ -33,7 +38,7 @@ export function AgendaScreen() {
   const inicio = visualizacao === 'semana' ? mondayOf(data) : data
   const fim = visualizacao === 'semana' ? addDays(inicio, 6) : data
   const datas = visualizacao === 'semana' ? Array.from({ length: 7 }, (_, i) => addDays(inicio, i)) : [data]
-  const larguraHora = visualizacao === 'semana' ? 100 : Math.max(width - 86, 250)
+  const larguraHora = visualizacao === 'semana' ? (desktop ? Math.max(100, Math.floor((larguraUtil - 60) / 7)) : 100) : Math.max(larguraUtil - 86, 250)
   const larguraGrade = 52 + larguraHora * datas.length
 
   useEffect(() => {
@@ -94,7 +99,7 @@ export function AgendaScreen() {
   const horaAtual = Number(partesHora.find((p) => p.type === 'hour')?.value || 0)
   const minutoAtual = Number(partesHora.find((p) => p.type === 'minute')?.value || 0)
   const mostrarLinhaAgora = horaAtual + minutoAtual / 60 >= primeiraHora && horaAtual + minutoAtual / 60 < ultimaHora
-  return <View style={styles.page}>
+  return <View style={styles.page} onLayout={(e) => setLarguraArea(e.nativeEvent.layout.width)}>
     <View style={styles.topArea}>
       <View style={styles.header}><View><Text style={styles.title}>Agenda</Text><Text style={styles.subtitle}>Organize seus compromissos</Text></View><TouchableOpacity style={styles.add} onPress={() => adicionar(data)}><Ionicons name="add" size={23} color="#fff" /></TouchableOpacity></View>
       <View style={styles.toolbar}>

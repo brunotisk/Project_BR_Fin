@@ -11,6 +11,8 @@ import { Button } from '../components/Button'
 import { notify } from '../utils/notify'
 import { APP_INFO } from '../constants/version'
 import { useModuleAccess } from '../services/ModuleAccessProvider'
+import { LARGURA_MINIMA_DESKTOP, useLayoutMode } from '../services/LayoutModeProvider'
+import type { PreferenciaLayout } from '../services/LayoutModeProvider'
 import { carregarConfiguracoesLocaisPoker, carregarFormatoNegativoPoker, carregarJogosCalculadoraPoker, carregarLocaisPoker, carregarTaxaPadraoPoker, enviarLogoLocalPoker, limparCacheDadosRemotos, removerLogoLocalPoker, salvarConfiguracoesLocaisPoker, salvarFormatoNegativoPoker, salvarJogosCalculadoraPoker, salvarLocaisPoker, salvarTaxaPadraoPoker, sincronizarConfiguracoesLocaisPoker } from '../services/planilhasService'
 import type { FormatoNegativoPoker, JogoCalculadoraPoker, LocalPokerConfig } from '../services/planilhasService'
 import type { ModuleKey } from '../services/ModuleAccessProvider'
@@ -24,6 +26,7 @@ export function ConfiguracoesScreen() {
   const navigation = useNavigation<any>()
   const { session, signOut } = useAuth()
   const { acesso, carregado: acessoCarregado, definirAcesso } = useModuleAccess()
+  const layout = useLayoutMode()
   const [email, setEmail] = useState('')
   const [cor, setCor] = useState('#173F35')
   const [recebidos, setRecebidos] = useState<ConviteRecebido[]>([])
@@ -261,6 +264,19 @@ export function ConfiguracoesScreen() {
           </View>
           <Text style={styles.itemSub}>{session?.user.email}</Text>
           <TouchableOpacity onPress={() => void signOut()} style={styles.signOut}><Ionicons name="log-out-outline" size={18} color={colors.expense} /><Text style={styles.signOutText}>Sair da conta</Text></TouchableOpacity>
+        </View>
+        <View style={styles.card}>
+          <View style={styles.heading}><View style={styles.icon}><Ionicons name={layout.modo === 'desktop' ? 'desktop-outline' : 'phone-portrait-outline'} size={20} color={colors.primary} /></View><View style={styles.headingText}><Text style={styles.sectionTitle}>Visualização</Text><Text style={styles.itemSub}>Você está na visão {layout.modo === 'desktop' ? 'Desktop (computador)' : 'Mobile (celular)'} · tela com {Math.round(layout.largura)}px</Text></View><View style={styles.versionBadge}><Text style={styles.versionBadgeText}>{layout.modo === 'desktop' ? 'Desktop' : 'Mobile'}</Text></View></View>
+          <View style={styles.negativeFormatOptions}>
+            {([['auto', 'Automático', 'sync-outline'], ['mobile', 'Mobile', 'phone-portrait-outline'], ['desktop', 'Desktop', 'desktop-outline']] as [PreferenciaLayout, string, keyof typeof Ionicons.glyphMap][]).map(([valor, rotulo, icone]) => {
+              const selecionado = layout.preferencia === valor
+              return <TouchableOpacity key={valor} accessibilityRole="radio" accessibilityState={{ checked: selecionado }} onPress={() => layout.definirPreferencia(valor)} style={[styles.negativeFormatOption, selecionado && styles.negativeFormatOptionActive]}>
+                <Ionicons name={icone} size={18} color={selecionado ? colors.primary : colors.muted} />
+                <Text style={styles.negativeFormatText}>{rotulo}</Text>
+              </TouchableOpacity>
+            })}
+          </View>
+          <Text style={styles.hint}>No Automático, telas a partir de {LARGURA_MINIMA_DESKTOP}px usam a visão Desktop. A escolha vale só para este aparelho/navegador.</Text>
         </View>
       </>}
 

@@ -14,6 +14,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../theme'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 import { notify } from '../utils/notify'
 import {
   carregarCartoesControle,
@@ -119,6 +120,7 @@ function normalizarMesSelecionado(mesSalvo: string) {
 }
 
 export function CartoesControleScreen() {
+  const desktop = useLayoutMode().modo === 'desktop'
   const [mesAtual, setMesAtual] = useState(() => normalizarMesSelecionado(carregarMesCartoesControleSelecionado()))
   const [vigentes, setVigentes] = useState<CartaoControleItem[]>([])
   const [detalhados, setDetalhados] = useState<CartaoControleItem[]>([])
@@ -579,6 +581,9 @@ export function CartoesControleScreen() {
           </View>
         </View>
 
+        {/* No computador: faturas à esquerda, simulador de contas à direita. */}
+        <View style={desktop ? styles.desktopColunas : undefined}>
+        <View style={desktop ? styles.desktopColunaPrincipal : undefined}>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionTitleBadge}>
             <Ionicons name="card-outline" size={16} color={colors.primary} />
@@ -588,8 +593,8 @@ export function CartoesControleScreen() {
 
         <View style={styles.tableCard}>
           <View style={[styles.tableHeaderSky, mesAtual !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
-            <Text style={[styles.colHeader, { flex: 1.05, minWidth: 0 }]}>Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.05, minWidth: 0 }]}>Valor</Text>
+            <Text style={[styles.colHeader, { flex: 0.78, minWidth: 0 }]}>Cartão</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.32, minWidth: 0 }]}>Valor</Text>
             <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Fech.</Text>
             <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Pgto.</Text>
             <Text style={[styles.colHeader, styles.colCenter, { flex: 0.68, minWidth: 0 }]}>Status</Text>
@@ -602,8 +607,8 @@ export function CartoesControleScreen() {
               style={styles.tableRow}
               onPress={() => abrirModalEditar(item)}
             >
-              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 1.05, minWidth: 0, fontSize: 11 }]}>{item.cartao_nome}</Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.cellText, styles.colRight, { flex: 1.05, minWidth: 0, fontSize: 11.5 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
+              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 0.78, minWidth: 0, fontSize: 10 }]}>{item.cartao_nome}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.cellText, styles.colRight, { flex: 1.32, minWidth: 0, fontSize: 11 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
               <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
                 {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
               </Text>
@@ -630,25 +635,28 @@ export function CartoesControleScreen() {
         </View>
 
         <View style={styles.legendCard}>
-          <Text style={styles.legendTitle}>Legenda</Text>
-          <View style={styles.legendSection}>
-            <Text style={styles.legendSectionTitle}>Status do cartão</Text>
-            <View style={styles.legendItems}>
+          <View style={styles.legendBubblesRow}>
+            <View style={[styles.legendBubble, styles.legendStatusBubble]}>
+              <Text style={styles.legendSectionTitle}>Status</Text>
+              <View style={styles.legendItemsInline}>
               <View style={styles.legendItem}><Text style={[styles.statusBadge, styles.statusOpen]}>A</Text><Text style={styles.legendDescription}>Aberto</Text></View>
               <View style={styles.legendItem}><Text style={[styles.statusBadge, styles.statusClosed]}>F</Text><Text style={styles.legendDescription}>Fechado</Text></View>
+              </View>
             </View>
-          </View>
-          <View style={styles.legendSection}>
-            <Text style={styles.legendSectionTitle}>Situação do pagamento</Text>
-            <View style={styles.legendItems}>
-              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgePago]}>P</Text><Text style={styles.legendDescription}>Pago</Text></View>
-              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeNaoPago]}>NP</Text><Text style={styles.legendDescription}>Não pago</Text></View>
-              <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeVencida]}>V</Text><Text style={styles.legendDescription}>Vencida</Text></View>
+            <View style={[styles.legendBubble, styles.legendPaymentBubble]}>
+              <Text style={styles.legendSectionTitle}>Pagamento</Text>
+              <View style={styles.legendItemsInline}>
+                <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgePago]}>P</Text><Text style={styles.legendDescription}>Pago</Text></View>
+                <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeNaoPago]}>NP</Text><Text style={styles.legendDescription}>Não pago</Text></View>
+                <View style={styles.legendItem}><Text style={[styles.situacaoBadge, styles.situacaoBadgeVencida]}>V</Text><Text style={styles.legendDescription}>Vencida</Text></View>
+              </View>
             </View>
           </View>
         </View>
 
-        <View style={styles.simulatorCard}>
+        </View>
+        <View style={desktop ? styles.desktopColunaLateral : undefined}>
+        <View style={[styles.simulatorCard, desktop && { marginTop: 0 }]}>
           <View style={styles.simulatorHeader}>
             <Text style={styles.simulatorHeaderTitle}>Contas</Text>
             <Text style={styles.simulatorHeaderTitle}>Valor</Text>
@@ -806,6 +814,8 @@ export function CartoesControleScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </View>
+        </View>
 
       </ScrollView>
 
@@ -941,6 +951,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
+  desktopColunas: { flexDirection: 'row', gap: 20, alignItems: 'flex-start' },
+  desktopColunaPrincipal: { flex: 1.4, minWidth: 0 },
+  desktopColunaLateral: { flex: 1, minWidth: 0 },
   scrollContent: {
     padding: 16,
     paddingBottom: 40
@@ -1205,12 +1218,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     marginTop: 8,
-    padding: 13,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    gap: 11
+    overflow: 'hidden'
   },
   legendTitle: {
     fontSize: 12,
@@ -1220,8 +1234,34 @@ const styles = StyleSheet.create({
   legendSection: {
     gap: 7
   },
+  legendBubblesRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 7
+  },
+  legendBubble: {
+    minWidth: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 5
+  },
+  legendStatusBubble: {
+    flex: 0.9
+  },
+  legendPaymentBubble: {
+    flex: 1.5
+  },
+  legendItemsInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
   legendSectionTitle: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: colors.muted,
     textTransform: 'uppercase',
@@ -1236,10 +1276,10 @@ const styles = StyleSheet.create({
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7
+    gap: 3
   },
   legendDescription: {
-    fontSize: 11,
+    fontSize: 9,
     color: colors.textSecondary
   },
   simulatorCard: {
