@@ -140,6 +140,7 @@ export function limparCacheDadosRemotos(): void {
   const prefixosRemotos = [
     STORAGE_KEYS.FECHAMENTO_PREFIX,
     CHAVE_LOCAL_SIMULADOR_CAIXA,
+    '@fin_planejamento_financeiro',
     STORAGE_KEYS.CARTOES_PREFIX,
     STORAGE_KEYS.LANCAMENTOS,
     STORAGE_KEYS.SESSOES_POKER,
@@ -325,6 +326,112 @@ export async function salvarSimuladorCaixa(simulador: DadosSimuladorCaixa): Prom
   if (error) throw error
 
   setLocalItem(CHAVE_LOCAL_SIMULADOR_CAIXA, simulador)
+}
+
+// ==========================================
+// PLANEJAMENTO FINANCEIRO (PROJEÇÃO MENSAL)
+// ==========================================
+// Guardado como JSON em fechamentos_mensais.observacao, mesmo padrão do
+// simulador de caixa, para funcionar em Supabase e Nhost sem migração.
+
+const CHAVE_MES_PLANEJAMENTO = 'planejamento-financeiro'
+const CHAVE_LOCAL_PLANEJAMENTO = '@fin_planejamento_financeiro'
+
+export type SecaoPlanejamento = 'entrada' | 'gasto'
+export type LinhaPlanejamento = {
+  id: string
+  secao: SecaoPlanejamento
+  nome: string
+  /** Valores por mês no formato 'YYYY-MM'. Gastos são guardados como valores positivos. */
+  valores: Record<string, number>
+}
+export type DadosPlanejamento = {
+  /** Meses exibidos, em ordem, no formato 'YYYY-MM'. */
+  meses: string[]
+  /** Meses que continuam no plano, mas não aparecem na tela. */
+  mesesOcultos?: string[]
+  linhas: LinhaPlanejamento[]
+}
+
+function mesesPadraoPlanejamento(): string[] {
+  const hoje = new Date()
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+}
+
+export function planejamentoVazio(): DadosPlanejamento {
+  const linha = (secao: SecaoPlanejamento, nome: string): LinhaPlanejamento => ({ id: gerarUuidPoker(), secao, nome, valores: {} })
+  return {
+    meses: mesesPadraoPlanejamento(),
+    linhas: [
+      linha('entrada', 'Salário'),
+      linha('gasto', 'Aluguel'),
+      linha('gasto', 'Condomínio'),
+      linha('gasto', 'Luz'),
+      linha('gasto', 'Internet')
+    ]
+  }
+}
+
+function normalizarPlanejamento(bruto: any): DadosPlanejamento | null {
+  if (!bruto || !Array.isArray(bruto.meses) || !Array.isArray(bruto.linhas)) return null
+  return {
+    meses: bruto.meses.filter((m: unknown) => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m)),
+    mesesOcultos: Array.isArray(bruto.mesesOcultos) ? bruto.mesesOcultos.filter((m: unknown) => typeof m === 'string') : [],
+    linhas: bruto.linhas
+      .filter((l: any) => l && typeof l.id === 'string')
+      .map((l: any) => ({
+        id: l.id,
+        secao: l.secao === 'entrada' ? 'entrada' : 'gasto',
+        nome: String(l.nome ?? ''),
+        valores: Object.fromEntries(Object.entries(l.valores || {}).map(([k, v]) => [k, Number(v) || 0]))
+      }))
+  }
+}
+
+export async function carregarPlanejamento(): Promise<DadosPlanejamento> {
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+
+  if (usuarioId) {
+    const { data, error } = await (supabase as any)
+      .from('fechamentos_mensais')
+      .select('*')
+      .eq('usuario_id', usuarioId)
+      .eq('mes_ano', CHAVE_MES_PLANEJAMENTO)
+      .maybeSingle()
+    if (error) throw error
+    if (data) {
+      let plano: DadosPlanejamento | null = null
+      try { plano = normalizarPlanejamento(JSON.parse(data.observacao || '{}')) } catch { /* JSON inválido */ }
+      if (plano) {
+        setLocalItem(CHAVE_LOCAL_PLANEJAMENTO, plano)
+        return plano
+      }
+    }
+  }
+
+  return normalizarPlanejamento(getLocalItem(CHAVE_LOCAL_PLANEJAMENTO, null)) || planejamentoVazio()
+}
+
+export async function salvarPlanejamento(plano: DadosPlanejamento): Promise<void> {
+  setLocalItem(CHAVE_LOCAL_PLANEJAMENTO, plano)
+  const { data: userData, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  const usuarioId = userData?.user?.id
+  if (!usuarioId) throw new Error('Faça login para salvar o planejamento no banco.')
+
+  const { error } = await (supabase as any)
+    .from('fechamentos_mensais')
+    .upsert({
+      usuario_id: usuarioId,
+      mes_ano: CHAVE_MES_PLANEJAMENTO,
+      observacao: JSON.stringify(plano)
+    }, { onConflict: 'usuario_id, mes_ano' })
+  if (error) throw error
 }
 
 // ==========================================
@@ -1051,6 +1158,13 @@ export function carregarConfiguracoesLocaisPoker(): LocalPokerConfig[] {
     const existe = resultado.some((item) => item.nome.toLowerCase() === nome.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === nome.toLowerCase()))
     if (!existe) resultado.push({ nome, cor: coresPadraoLocaisPoker[nome.toLowerCase()] || '#475569', aplica_taxa: true })
   })
+  // Dados antigos podem registrar o cashout como "H2 Poker" e o buy-in como "H2".
+  // Trate o nome antigo como alias para que ambos apareçam sob o mesmo local.
+  const h2 = resultado.find((config) => config.nome.toLowerCase() === 'h2')
+  const h2PokerJaExiste = resultado.some((config) => config.nome.toLowerCase() === 'h2 poker')
+  if (h2 && !h2PokerJaExiste && !h2.aliases?.some((alias) => alias.toLowerCase() === 'h2 poker')) {
+    h2.aliases = [...(h2.aliases || []), 'H2 Poker']
+  }
   return resultado.map((config, indice) => ({ aplica_taxa: true, ordem_exibicao: indice, ...config }))
     .sort((a, b) => (a.ordem_exibicao ?? 0) - (b.ordem_exibicao ?? 0))
 }

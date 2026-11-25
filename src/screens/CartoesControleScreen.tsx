@@ -588,12 +588,12 @@ export function CartoesControleScreen() {
 
         <View style={styles.tableCard}>
           <View style={[styles.tableHeaderSky, mesAtual !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
-            <Text style={[styles.colHeader, { flex: 1.15 }]}>Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.95 }]}>Valor</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Fech.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.85 }]}>Pgto.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.75 }]}>Status</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.48 }]}>Sit.</Text>
+            <Text style={[styles.colHeader, { flex: 1.05, minWidth: 0 }]}>Cartão</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.05, minWidth: 0 }]}>Valor</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Fech.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Pgto.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.68, minWidth: 0 }]}>Status</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.5, minWidth: 0 }]}>Sit.</Text>
           </View>
 
           {itensDoMes.map((item) => (
@@ -602,14 +602,14 @@ export function CartoesControleScreen() {
               style={styles.tableRow}
               onPress={() => abrirModalEditar(item)}
             >
-              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 1.15 }]}>{item.cartao_nome}</Text>
-              <Text numberOfLines={1} style={[styles.cellText, styles.colRight, { flex: 0.95 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
-              <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.85, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
+              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 1.05, minWidth: 0, fontSize: 11 }]}>{item.cartao_nome}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.cellText, styles.colRight, { flex: 1.05, minWidth: 0, fontSize: 11.5 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
+              <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
                 {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
               </Text>
-              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.85 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
-              <View style={[styles.statusCell, { flex: 0.75 }]}><Text accessibilityLabel={`Status: ${item.status === 'fechado' ? 'Fechado' : 'Aberto'}`} style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'F' : 'A'}</Text></View>
-              <View style={[styles.statusCell, { flex: 0.48 }]}>
+              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
+              <View style={[styles.statusCell, { flex: 0.68 }]}><Text accessibilityLabel={`Status: ${item.status === 'fechado' ? 'Fechado' : 'Aberto'}`} style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'F' : 'A'}</Text></View>
+              <View style={[styles.statusCell, { flex: 0.5 }]}>
                 <Text
                   accessibilityLabel={`Situação: ${item.situacao_pagamento === 'pago' ? 'Pago' : item.situacao_pagamento === 'vencida' ? 'Vencida' : 'Não pago'}`}
                   style={[styles.situacaoBadge, item.situacao_pagamento === 'pago' ? styles.situacaoBadgePago : item.situacao_pagamento === 'vencida' ? styles.situacaoBadgeVencida : styles.situacaoBadgeNaoPago]}
@@ -1104,7 +1104,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#38BDF8',
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     paddingVertical: 8,
     minHeight: 48
   },
@@ -1126,7 +1126,7 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.border

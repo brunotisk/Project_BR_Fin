@@ -6,6 +6,7 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { TransacoesScreen } from '../screens/TransacoesScreen'
+import { PlanejamentoFinanceiroScreen } from '../screens/PlanejamentoFinanceiroScreen'
 import { CartoesControleScreen } from '../screens/CartoesControleScreen'
 import { PokerScreen } from '../screens/PokerScreen'
 import { TodoListScreen } from '../screens/TodoListScreen'
@@ -126,6 +127,7 @@ type FinanceParamList = {
   CartoesTab: undefined
   PokerTab: undefined
   TransacoesTab: undefined
+  PlanejamentoTab: undefined
 }
 const FinanceStack = createNativeStackNavigator<FinanceParamList>()
 
@@ -133,10 +135,12 @@ function FinanceiroNavigator() {
   return <FinanceStack.Navigator initialRouteName="PokerTab" screenOptions={{ header: ({ navigation, route }) => <View style={{ backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10, gap: 4 }}>{([
     ['PokerTab', 'Poker'],
     ['CartoesTab', 'Cartões'],
-    ['TransacoesTab', 'Transações']
+    ['TransacoesTab', 'Transações'],
+    ['PlanejamentoTab', 'Planejamento']
   ] as const).map(([name, label]) => <TouchableOpacity key={name} onPress={() => navigation.navigate(name)} style={{ paddingHorizontal: 12, paddingVertical: 13, borderBottomWidth: route.name === name ? 2 : 0, borderBottomColor: colors.primary }}><Text style={{ color: route.name === name ? colors.primary : colors.muted, fontSize: 12, fontWeight: '700' }}>{label}</Text></TouchableOpacity>)}</ScrollView></View> }}>
     <FinanceStack.Screen name="PokerTab" component={PokerScreen} />
     <FinanceStack.Screen name="CartoesTab" component={CartoesControleScreen} />
     <FinanceStack.Screen name="TransacoesTab" component={TransacoesScreen} />
+    <FinanceStack.Screen name="PlanejamentoTab" component={PlanejamentoFinanceiroScreen} />
   </FinanceStack.Navigator>
 }
