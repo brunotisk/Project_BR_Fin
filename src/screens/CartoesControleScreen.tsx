@@ -687,7 +687,7 @@ export function CartoesControleScreen() {
         <View style={desktop ? styles.desktopColunas : undefined}>
         <View style={desktop ? styles.desktopColunaPrincipal : undefined}>
         {desktop
-          ? OPCOES_MESES_CONTROLE.map((m) => <View key={m.valor}>{renderTabelaMes(m.valor, m.valor === mesAtual ? itensDoMes : ordenarItens(itensPorMes[m.valor] || []))}</View>)
+          ? OPCOES_MESES_CONTROLE.map((m) => <View key={m.valor} style={styles.desktopBlocoMes}>{renderTabelaMes(m.valor, m.valor === mesAtual ? itensDoMes : ordenarItens(itensPorMes[m.valor] || []))}</View>)
           : renderTabelaMes(mesAtual, itensDoMes)}
 
         <View style={styles.legendCard}>
@@ -711,7 +711,15 @@ export function CartoesControleScreen() {
         </View>
 
         </View>
+        {/* Linha divisória entre as faturas e o simulador (computador). */}
+        {desktop && <View style={styles.desktopDivisor} />}
         <View style={desktop ? styles.desktopColunaLateral : undefined}>
+        {desktop && <View style={[styles.sectionHeaderRow, styles.desktopTituloSimulador]}>
+          <View style={styles.sectionTitleBadge}>
+            <Ionicons name="calculator-outline" size={16} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Simulador</Text>
+          </View>
+        </View>}
         <View style={[styles.simulatorCard, desktop && { marginTop: 0 }]}>
           <View style={styles.simulatorHeader}>
             <Text style={styles.simulatorHeaderTitle}>Contas</Text>
@@ -1007,7 +1015,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
-  desktopColunas: { flexDirection: 'row', gap: 20, alignItems: 'flex-start' },
+  desktopColunas: { flexDirection: 'row', alignItems: 'stretch' },
+  // Espaço entre os meses empilhados e divisória preta entre as colunas.
+  desktopBlocoMes: { marginBottom: 28 },
+  desktopDivisor: { width: 1, backgroundColor: '#1F2937', marginHorizontal: 28, marginTop: 52, marginBottom: 12 },
+  desktopTituloSimulador: { minHeight: 42 },
   desktopColunaPrincipal: { flex: 1.4, minWidth: 0 },
   desktopColunaLateral: { flex: 1, minWidth: 0 },
   scrollContent: {

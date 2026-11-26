@@ -14,6 +14,7 @@ import {
   type SecaoPlanejamento
 } from '../services/planilhasService'
 import { useLayoutMode } from '../services/LayoutModeProvider'
+import { GraficosMes } from '../components/GraficosPlanejamento'
 
 const ROW_H = 38
 const COL_NOME = 168
@@ -57,7 +58,7 @@ function formatarCelula(valor: number, secao: SecaoPlanejamento | 'saldo') {
   return valor < 0 ? `-${numeroFmt.format(-valor)}` : numeroFmt.format(valor)
 }
 
-function CelulaValor({ valor, secao, largura, bloqueado, rotuloPct, onChange }: { valor: number | undefined; secao: SecaoPlanejamento; largura: number; bloqueado: boolean; rotuloPct?: RotuloPct; onChange: (v: number | null) => void }) {
+function CelulaValor({ valor, secao, largura, bloqueado, rotuloPct, centro, passado, onChange }: { valor: number | undefined; secao: SecaoPlanejamento; largura: number; bloqueado: boolean; rotuloPct?: RotuloPct; centro?: boolean; passado?: boolean; onChange: (v: number | null) => void }) {
   const [editando, setEditando] = useState(false)
   const [texto, setTexto] = useState('')
   const v = valor || 0
@@ -72,12 +73,12 @@ function CelulaValor({ valor, secao, largura, bloqueado, rotuloPct, onChange }: 
   }, [bloqueado])
   useEffect(() => () => { const p = pendenteRef.current; if (p.editando) p.onChange(parseValor(p.texto)) }, [])
   if (bloqueado) {
-    if (rotuloPct !== undefined) return <CelulaComPercentual largura={largura} texto={formatarCelula(v, secao)} rotuloPct={rotuloPct} estiloTexto={negativo ? { color: colors.expense } : undefined} />
-    return <Text numberOfLines={1} style={[styles.celula, { width: largura }, negativo && { color: colors.expense }]}>{formatarCelula(v, secao)}</Text>
+    if (rotuloPct !== undefined) return <CelulaComPercentual largura={largura} centro={centro} texto={formatarCelula(v, secao)} rotuloPct={rotuloPct} estiloTexto={passado ? styles.passado : negativo ? { color: colors.expense } : undefined} />
+    return <Text numberOfLines={1} style={[styles.celula, { width: largura }, centro && styles.centro, negativo && { color: colors.expense }, passado && styles.passado]}>{formatarCelula(v, secao)}</Text>
   }
   return (
     <TextInput
-      style={[styles.celula, { width: largura }, styles.celulaInput, editando && styles.celulaEditando, !editando && negativo && { color: colors.expense }]}
+      style={[styles.celula, { width: largura }, styles.celulaInput, centro && styles.centro, editando && styles.celulaEditando, !editando && negativo && { color: colors.expense }, !editando && passado && styles.passado]}
       value={editando ? texto : formatarCelula(v, secao)}
       onFocus={() => { setEditando(true); setTexto(v ? String(v).replace('.', ',') : '') }}
       onChangeText={setTexto}
@@ -101,10 +102,10 @@ function textoPct(valor: number | null) {
 type RotuloPct = { grupo?: string; total: string }
 
 /** Valor com o percentual em letra menor logo abaixo, na mesma altura de linha. */
-function CelulaComPercentual({ largura, texto, rotuloPct, estiloTexto }: { largura: number; texto: string; rotuloPct: RotuloPct; estiloTexto?: object }) {
+function CelulaComPercentual({ largura, texto, rotuloPct, estiloTexto, centro, passado }: { largura: number; texto: string; rotuloPct: RotuloPct; estiloTexto?: object; centro?: boolean; passado?: boolean }) {
   return (
     <View style={[styles.celulaDupla, { width: largura }]}>
-      <Text numberOfLines={1} style={[styles.celulaDuplaValor, estiloTexto]}>{texto}</Text>
+      <Text numberOfLines={1} style={[styles.celulaDuplaValor, estiloTexto, centro && styles.centro, passado && styles.passado]}>{texto}</Text>
       <Text numberOfLines={1} style={styles.celulaDuplaPct}>
         {rotuloPct.grupo !== undefined && <><Text style={styles.pctGrupo}>{rotuloPct.grupo}</Text><Text style={styles.pctGrupo}> | </Text></>}
         <Text style={styles.pctGlobal}>{rotuloPct.total}</Text>
@@ -149,6 +150,8 @@ export function PlanejamentoFinanceiroScreen() {
   // A tela abre travada; o botão Editar libera alterações até ser travada de novo.
   const [modoEdicao, setModoEdicao] = useState(false)
   const [ajudaVisivel, setAjudaVisivel] = useState(false)
+  // Celular: opções (editar, gastos, filtros, zoom) ficam num menu recolhível que fecha após cada escolha.
+  const [menuAberto, setMenuAberto] = useState(false)
   const [gerenciarGrupos, setGerenciarGrupos] = useState(false)
   // Visão dos gastos: detalhada (linha a linha, editável) ou agrupada (um total por grupo, só leitura).
   const [visaoGastos, setVisaoGastosEstado] = useState<VisaoGastos>(lerVisaoGastos)
@@ -236,8 +239,9 @@ export function PlanejamentoFinanceiroScreen() {
       const ent = soma(entradas, mes)
       const gas = soma(gastos, mes)
       const saldo = ent - gas
-      acumulado += saldo
-      return { mes, ent, gas, saldo, acumulado }
+      const ajuste = plano?.ajustes?.[mes] || 0
+      acumulado += saldo + ajuste
+      return { mes, ent, gas, saldo, ajuste, acumulado }
     })
   }, [plano, entradas, gastos])
 
@@ -254,6 +258,11 @@ export function PlanejamentoFinanceiroScreen() {
     </View>
   }
 
+  const setAjuste = (mes: string, v: number | null) => atualizar((p) => {
+    const ajustes = { ...(p.ajustes ?? {}) }
+    if (v) ajustes[mes] = v; else delete ajustes[mes]
+    return { ...p, ajustes }
+  })
   const setValor = (id: string, mes: string, v: number | null) => atualizar((p) => ({
     ...p,
     linhas: p.linhas.map((l) => {
@@ -297,7 +306,12 @@ export function PlanejamentoFinanceiroScreen() {
   })
 
   const removerMes = (mes: string) => {
-    atualizar((p) => ({ ...p, meses: p.meses.filter((m) => m !== mes), mesesOcultos: (p.mesesOcultos ?? []).filter((m) => m !== mes) }))
+    atualizar((p) => {
+      const meses = p.meses.filter((m) => m !== mes)
+      const ocultosRestantes = (p.mesesOcultos ?? []).filter((m) => m !== mes)
+      // Se o mês removido era o único na tela, volta a mostrar todos.
+      return { ...p, meses, mesesOcultos: meses.every((m) => ocultosRestantes.includes(m)) ? [] : ocultosRestantes }
+    })
     setMesEditando(null)
   }
 
@@ -319,19 +333,31 @@ export function PlanejamentoFinanceiroScreen() {
 
   // Meses ocultos continuam no plano (e no saldo acumulado), só não aparecem na grade.
   const ocultos = new Set(plano.mesesOcultos ?? [])
-  const visiveis = plano.meses.filter((m) => !ocultos.has(m))
-  const totaisVisiveis = totais.filter((t) => !ocultos.has(t.mes))
+  const visiveisPlano = plano.meses.filter((m) => !ocultos.has(m))
+  const mesHoje = mesAtual()
+  const visiveis = visiveisPlano
+  // Com um único mês no filtro, os gráficos dele aparecem ao lado da tabela.
+  const mesUnico = visiveis.length === 1 ? visiveis[0] : null
+  const totaisVisiveis = totais.filter((t) => visiveis.includes(t.mes))
   const larguraNatural = colNome + visiveis.length * colMes + 2
   const escalaAjustar = larguraArea > 0 ? Math.min(1, (larguraArea - 24) / larguraNatural) : 1
   const escala = zoom === 'padrao' ? 1 : zoom === 'reduzido' ? 0.5 : escalaAjustar
 
-  const definirOcultos = (fn: (meses: string[]) => string[]) => atualizar((p) => ({ ...p, mesesOcultos: fn(p.meses) }))
-  const alternarMes = (mes: string) => atualizar((p) => {
-    const atuais = new Set(p.mesesOcultos ?? [])
-    if (atuais.has(mes)) atuais.delete(mes); else atuais.add(mes)
-    return { ...p, mesesOcultos: p.meses.filter((m) => atuais.has(m)) }
+  // Sempre fica pelo menos um mês na tela: um filtro que ocultaria todos é ignorado.
+  const definirOcultos = (fn: (meses: string[]) => string[]) => atualizar((p) => {
+    const novos = fn(p.meses)
+    return p.meses.length > 0 && p.meses.every((m) => novos.includes(m)) ? p : { ...p, mesesOcultos: novos }
   })
+  const alternarMes = (mes: string) => definirOcultos((meses) => {
+    const atuais = new Set(plano.mesesOcultos ?? [])
+    if (atuais.has(mes)) atuais.delete(mes); else atuais.add(mes)
+    return meses.filter((m) => atuais.has(m))
+  })
+  const mesesFuturos = plano.meses.filter((m) => m >= mesAtual())
   const ocultarMes = (mes: string) => { alternarMes(mes); setMesEditando(null) }
+  // "Selecionar mês" = filtro com só esse mês visível (igual a escolher um único mês em Filtros).
+  const selecionarSomenteMes = (mes: string) => { definirOcultos((meses) => meses.filter((m) => m !== mes)); setMesEditando(null) }
+  const totalDoMes = (mes: string | null) => totais.find((t) => t.mes === mes) ?? { mes: mes ?? '', ent: 0, gas: 0, saldo: 0, acumulado: 0 }
 
   // Blocos de gastos na ordem da primeira linha de cada grupo; grupos vazios vão ao fim.
   const grupos = plano.grupos ?? []
@@ -350,6 +376,9 @@ export function PlanejamentoFinanceiroScreen() {
   const agrupada = visaoGastos === 'agrupada' && grupos.length > 0
   const somaGrupo = (linhas: LinhaPlanejamento[], mes: string) => linhas.reduce((acc, l) => acc + (l.valores[mes] || 0), 0)
   const totalGastosMes = new Map(totais.map((t) => [t.mes, t.gas]))
+  const gastosDoMes = (mes: string | null) => !mes ? [] : blocosGastos.map((b) => b.tipo === 'grupo'
+    ? { nome: b.grupo.nome, valor: somaGrupo(b.linhas, mes) }
+    : { nome: b.linha.nome, valor: b.linha.valores[mes] || 0 })
   /** Parte/todo em %; null quando o todo é zero (não há como dividir). */
   const pct = (parte: number, todo: number) => (todo ? (parte / todo) * 100 : null)
   // Índice/total de cada linha solta entre as linhas soltas, para habilitar as setas.
@@ -386,25 +415,42 @@ export function PlanejamentoFinanceiroScreen() {
     <View style={styles.linhaMeses}>
       {totaisVisiveis.map((t) => {
         const v = valor(t)
-        return <Text key={t.mes} style={[styles.celula, { width: colMes }, styles.celulaTotal, destaque && v < 0 && { color: colors.expense }, destaque && v > 0 && { color: colors.income }]}>{formatarCelula(v, secao)}</Text>
+        return <Text key={t.mes} style={[styles.celula, { width: colMes }, styles.celulaTotal, t.mes === mesHoje && styles.centro, destaque && v < 0 && { color: colors.expense }, destaque && v > 0 && { color: colors.income }, t.mes < mesHoje && styles.passado]}>{formatarCelula(v, secao)}</Text>
       })}
     </View>
   )
 
+  const celular = modo !== 'desktop'
+  const mostrarOpcoes = !celular || menuAberto
+  const fecharMenu = () => { if (celular) setMenuAberto(false) }
+  // Resumo das escolhas atuais, mostrado no botão do menu recolhido.
+  const resumoMenu = [
+    modoEdicao ? 'Editando' : null,
+    grupos.length > 0 ? (visaoGastos === 'agrupada' ? 'Agrupada' : 'Detalhada') : null,
+    mostrarPct ? '%' : null,
+    `${visiveisPlano.length}/${plano.meses.length} meses`,
+    zoom === 'padrao' ? '100%' : zoom === 'reduzido' ? '50%' : 'Tudo',
+    textoEstado || null
+  ].filter(Boolean).join(' · ')
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, celular && !menuAberto && { paddingBottom: 6 }]}>
         {/* Título com o box de edição ao lado; Filtros e Zoom à direita na mesma linha. */}
         <View style={styles.linhaTitulo}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={styles.title}>Planejamento</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Como usar o planejamento" hitSlop={8} onPress={() => setAjudaVisivel(true)} style={styles.botaoAjuda}>
-              <Ionicons name="chatbubble-outline" size={24} color={colors.primary} />
-              <Text style={styles.botaoAjudaI}>i</Text>
+              <Ionicons name="information-circle-outline" size={24} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          <View style={[styles.box, modoEdicao && styles.boxEdicaoAtivo]}>
-            <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: modoEdicao, disabled: agrupada }} disabled={agrupada} style={[styles.botaoMes, modoEdicao && styles.botaoEdicaoAtivo, agrupada && { opacity: 0.5 }]} onPress={() => setModoEdicao((e) => !e)}>
+          {celular && <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: menuAberto }} accessibilityLabel="Opções de visualização" onPress={() => setMenuAberto((a) => !a)} style={[styles.botaoMenu, menuAberto && styles.botaoMenuAberto]}>
+            <Ionicons name="options-outline" size={16} color={menuAberto ? '#fff' : colors.primary} />
+            <Text numberOfLines={1} style={[styles.botaoMenuTexto, menuAberto && { color: '#fff' }]}>{resumoMenu}</Text>
+            <Ionicons name={menuAberto ? 'chevron-up' : 'chevron-down'} size={16} color={menuAberto ? '#fff' : colors.primary} />
+          </TouchableOpacity>}
+          {mostrarOpcoes || modoEdicao ? <View style={[styles.box, modoEdicao && styles.boxEdicaoAtivo]}>
+            <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: modoEdicao, disabled: agrupada }} disabled={agrupada} style={[styles.botaoMes, modoEdicao && styles.botaoEdicaoAtivo, agrupada && { opacity: 0.5 }]} onPress={() => { setModoEdicao((e) => !e); fecharMenu() }}>
               <Ionicons name={modoEdicao ? 'lock-open-outline' : agrupada ? 'lock-closed-outline' : 'create-outline'} size={14} color={modoEdicao ? '#fff' : colors.primary} />
               <Text style={[styles.botaoMesTexto, modoEdicao && { color: '#fff' }]}> {modoEdicao ? 'Concluir edição' : agrupada ? 'Editar (só na detalhada)' : 'Editar'}</Text>
             </TouchableOpacity>
@@ -419,48 +465,50 @@ export function PlanejamentoFinanceiroScreen() {
                 <Ionicons name="folder-open-outline" size={14} color={colors.primary} /><Text style={styles.botaoMesTexto}> Grupos ({grupos.length})</Text>
               </TouchableOpacity>
             </>}
-          </View>
+          </View> : null}
           {/* Boxes de visualização (não alteram dados), alinhados à direita. */}
-          <View style={[styles.linhaBoxes, modo !== 'desktop' && styles.linhaBoxesCelular]}>
+          {mostrarOpcoes && <View style={[styles.linhaBoxes, modo !== 'desktop' && styles.linhaBoxesCelular]}>
             <View style={styles.box}>
               <Text style={styles.boxTitulo}>Gastos</Text>
               {grupos.length > 0 && <View style={styles.zoomGrupo}>
                 {([['detalhada', 'Detalhada', 'list-outline'], ['agrupada', 'Agrupada', 'folder-outline']] as [VisaoGastos, string, keyof typeof Ionicons.glyphMap][]).map(([valor, rotulo, icone]) => (
-                  <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: visaoGastos === valor }} onPress={() => definirVisaoGastos(valor)} style={[styles.zoomOpcao, visaoGastos === valor && styles.zoomOpcaoAtiva]}>
+                  <TouchableOpacity key={valor} accessibilityRole="button" accessibilityState={{ selected: visaoGastos === valor }} onPress={() => { definirVisaoGastos(valor); fecharMenu() }} style={[styles.zoomOpcao, visaoGastos === valor && styles.zoomOpcaoAtiva]}>
                     <Ionicons name={icone} size={13} color={visaoGastos === valor ? '#fff' : colors.primary} />
                     <Text style={[styles.botaoMesTexto, visaoGastos === valor && { color: '#fff' }]}>{rotulo}</Text>
                   </TouchableOpacity>
                 ))}
               </View>}
-              <TouchableOpacity accessibilityRole="switch" accessibilityState={{ checked: mostrarPct }} accessibilityLabel="Mostrar percentuais dos gastos" onPress={alternarPct} style={[styles.botaoMes, mostrarPct && styles.botaoEdicaoAtivo]}>
+              <TouchableOpacity accessibilityRole="switch" accessibilityState={{ checked: mostrarPct }} accessibilityLabel="Mostrar percentuais dos gastos" onPress={() => { alternarPct(); fecharMenu() }} style={[styles.botaoMes, mostrarPct && styles.botaoEdicaoAtivo]}>
                 <Ionicons name="pie-chart-outline" size={13} color={mostrarPct ? '#fff' : colors.primary} />
                 <Text style={[styles.botaoMesTexto, mostrarPct && { color: '#fff' }]}> %</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.box}>
               <Text style={styles.boxTitulo}>Filtros</Text>
-              <TouchableOpacity style={styles.botaoMes} onPress={() => setSeletorMeses(true)}>
-                <Ionicons name="calendar-outline" size={14} color={colors.primary} /><Text style={styles.botaoMesTexto}> Meses ({visiveis.length}/{plano.meses.length})</Text>
+              <TouchableOpacity style={styles.botaoMes} onPress={() => { setSeletorMeses(true); fecharMenu() }}>
+                <Ionicons name="calendar-outline" size={14} color={colors.primary} /><Text style={styles.botaoMesTexto}> Meses ({visiveisPlano.length}/{plano.meses.length})</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.box}>
               <Text style={styles.boxTitulo}>Zoom</Text>
               <View style={styles.zoomGrupo}>
                 {([['padrao', '100%', 'search-outline'], ['reduzido', '50%', 'remove-circle-outline'], ['ajustar', 'Tudo', 'scan-outline']] as [NivelZoom, string, keyof typeof Ionicons.glyphMap][]).map(([valor, rotulo, icone]) => (
-                  <TouchableOpacity key={valor} accessibilityRole="button" accessibilityLabel={valor === 'ajustar' ? 'Ajustar a tabela inteira na tela' : `Zoom ${rotulo}`} accessibilityState={{ selected: zoom === valor }} onPress={() => definirZoom(valor)} style={[styles.zoomOpcao, zoom === valor && styles.zoomOpcaoAtiva]}>
+                  <TouchableOpacity key={valor} accessibilityRole="button" accessibilityLabel={valor === 'ajustar' ? 'Ajustar a tabela inteira na tela' : `Zoom ${rotulo}`} accessibilityState={{ selected: zoom === valor }} onPress={() => { definirZoom(valor); fecharMenu() }} style={[styles.zoomOpcao, zoom === valor && styles.zoomOpcaoAtiva]}>
                     <Ionicons name={icone} size={13} color={zoom === valor ? '#fff' : colors.primary} />
                     <Text style={[styles.botaoMesTexto, zoom === valor && { color: '#fff' }]}>{rotulo}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-          </View>
+          </View>}
         </View>
 
-        <Text style={[styles.subtitle, { marginTop: -6 }]}>Projeção mensal de entradas e gastos{textoEstado ? ` · ${textoEstado}` : ''}</Text>
+        {mostrarOpcoes && <Text style={[styles.subtitle, { marginTop: -6 }]}>Projeção mensal de entradas e gastos{textoEstado ? ` · ${textoEstado}` : ''}</Text>}
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }} onLayout={(e) => setLarguraArea(e.nativeEvent.layout.width)}>
+        <View style={mesUnico ? (modo === 'desktop' ? styles.focoLinha : styles.focoColuna) : undefined}>
+        <View style={mesUnico && modo === 'desktop' ? { flexShrink: 0 } : undefined}>
         {(() => {
           const conteudoTabela = <>
           {/* Coluna fixa com os nomes */}
@@ -490,23 +538,25 @@ export function PlanejamentoFinanceiroScreen() {
             <View style={styles.nomeLinha}><Text style={styles.nomeTotal}>Gastos</Text></View>
             <View style={styles.espaco} />
             <View style={styles.nomeLinha}><Text style={styles.nomeTotal}>Saldo do mês</Text></View>
+            <View style={styles.nomeLinha}><Text style={styles.nomeAjuste}>Ajustes (+/−)</Text></View>
             <View style={styles.nomeLinha}><Text style={styles.nomeTotal}>Saldo acumulado</Text></View>
           </View>
 
           {/* Colunas de meses com rolagem horizontal */}
           <ScrollView horizontal showsHorizontalScrollIndicator style={{ flex: 1 }}>
             <View>
+              {/* Meses passados em cinza e borda em volta do mês atual (não bloqueiam toques). */}
               <View style={[styles.linhaMeses, styles.cabecalho]}>
                 {visiveis.map((m) => (
-                  <TouchableOpacity key={m} style={[styles.celula, { width: colMes, justifyContent: 'center' }]} onPress={() => setMesEditando(m)}>
-                    <Text style={[styles.mesTexto, m === mesAtual() && { color: colors.primary }]}>{rotuloMes(m)}</Text>
+                  <TouchableOpacity key={m} style={[styles.celula, { width: colMes, justifyContent: 'center' }, m === mesHoje && { alignItems: 'flex-end' }]} onPress={() => setMesEditando(m)}>
+                    <Text style={[styles.mesTexto, m === mesHoje && [styles.rotuloMesAtual, { color: colors.primary, fontWeight: '900' }], m < mesHoje && styles.passado]}>{rotuloMes(m)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <View style={styles.secaoTitulo} />
               {entradas.map((l) => (
                 <View key={l.id} style={styles.linhaMeses}>
-                  {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="entrada" largura={colMes} bloqueado={!modoEdicao} onChange={(v) => setValor(l.id, m, v)} />)}
+                  {visiveis.map((m) => <CelulaValor key={m} centro={m === mesHoje} passado={m < mesHoje} valor={l.valores[m]} secao="entrada" largura={colMes} bloqueado={!modoEdicao} onChange={(v) => setValor(l.id, m, v)} />)}
                 </View>
               ))}
               {linhaTotal((t) => t.ent, 'entrada')}
@@ -516,7 +566,7 @@ export function PlanejamentoFinanceiroScreen() {
                 // % da linha: dentro de grupo mostra "% do grupo | % do total"; solta, só "% do total".
                 const linhaValores = (l: LinhaPlanejamento, linhasDoGrupo?: LinhaPlanejamento[]) => (
                   <View key={l.id} style={styles.linhaMeses}>
-                    {visiveis.map((m) => <CelulaValor key={m} valor={l.valores[m]} secao="gasto" largura={colMes} bloqueado={!modoEdicao}
+                    {visiveis.map((m) => <CelulaValor key={m} centro={m === mesHoje} passado={m < mesHoje} valor={l.valores[m]} secao="gasto" largura={colMes} bloqueado={!modoEdicao}
                       rotuloPct={!mostrarPct ? undefined : {
                         grupo: linhasDoGrupo ? textoPct(pct(l.valores[m] || 0, somaGrupo(linhasDoGrupo, m))) : undefined,
                         total: textoPct(pct(l.valores[m] || 0, totalGastosMes.get(m) || 0))
@@ -529,8 +579,8 @@ export function PlanejamentoFinanceiroScreen() {
                 const subtotal = (
                   <View key={`g-${b.grupo.id}`} style={[styles.linhaMeses, styles.linhaGrupo]}>
                     {visiveis.map((m) => mostrarPct
-                      ? <CelulaComPercentual key={m} largura={colMes} texto={formatarCelula(somaGrupo(b.linhas, m), 'gasto')} rotuloPct={{ total: textoPct(pct(somaGrupo(b.linhas, m), totalGastosMes.get(m) || 0)) }} estiloTexto={agrupada ? { fontWeight: '700' } : styles.subtotalGrupo} />
-                      : <Text key={m} numberOfLines={1} style={[styles.celula, { width: colMes }, agrupada ? { fontWeight: '700' } : styles.subtotalGrupo]}>{formatarCelula(somaGrupo(b.linhas, m), 'gasto')}</Text>)}
+                      ? <CelulaComPercentual key={m} centro={m === mesHoje} passado={m < mesHoje} largura={colMes} texto={formatarCelula(somaGrupo(b.linhas, m), 'gasto')} rotuloPct={{ total: textoPct(pct(somaGrupo(b.linhas, m), totalGastosMes.get(m) || 0)) }} estiloTexto={agrupada ? { fontWeight: '700' } : styles.subtotalGrupo} />
+                      : <Text key={m} numberOfLines={1} style={[styles.celula, { width: colMes }, m === mesHoje && styles.centro, agrupada ? { fontWeight: '700' } : styles.subtotalGrupo, m < mesHoje && styles.passado]}>{formatarCelula(somaGrupo(b.linhas, m), 'gasto')}</Text>)}
                   </View>
                 )
                 if (agrupada) return subtotal
@@ -539,6 +589,10 @@ export function PlanejamentoFinanceiroScreen() {
               {linhaTotal((t) => t.gas, 'gasto')}
               <View style={styles.espaco} />
               {linhaTotal((t) => t.saldo, 'saldo', true)}
+              {/* Ajustes: valor livre por mês que entra no saldo acumulado (negativo subtrai). */}
+              <View style={styles.linhaMeses}>
+                {visiveis.map((m) => <CelulaValor key={m} centro={m === mesHoje} passado={m < mesHoje} valor={plano.ajustes?.[m]} secao="entrada" largura={colMes} bloqueado={!modoEdicao} onChange={(v) => setAjuste(m, v)} />)}
+              </View>
               {linhaTotal((t) => t.acumulado, 'saldo', true)}
             </View>
           </ScrollView>
@@ -553,6 +607,13 @@ export function PlanejamentoFinanceiroScreen() {
           )
           return <ScrollView horizontal contentContainerStyle={{ paddingHorizontal: 12 }}>{caixa}</ScrollView>
         })()}
+        </View>
+        {mesUnico && <View style={[styles.painelGraficos, modo === 'desktop' ? { flex: 1, minWidth: 0 } : { marginHorizontal: 12, marginTop: 12 }]}>
+          <Text style={styles.painelGraficosTitulo}>Gráficos · {rotuloMes(mesUnico)}</Text>
+          <GraficosMes total={totalDoMes(mesUnico)} itens={gastosDoMes(mesUnico)} empilhar={modo !== 'desktop'}
+            linhas={gastos.map((l) => ({ nome: l.nome, grupo: grupoValido(l) ? grupoPorId.get(l.grupoId!)!.nome : null, valor: l.valores[mesUnico] || 0 }))} />
+        </View>}
+        </View>
         {visiveis.length === 0 && <Text style={[styles.dica, { color: colors.expense }]}>Nenhum mês selecionado. Toque em "Meses" para escolher quais aparecem.</Text>}
       </ScrollView>
 
@@ -582,18 +643,32 @@ export function PlanejamentoFinanceiroScreen() {
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setMesEditando(null)}>
           <View style={styles.modal}>
             <Text style={styles.modalTitulo}>{mesEditando ? rotuloMes(mesEditando) : ''}</Text>
+            {mesUnico ? <>
+              {/* Único mês na tela: não pode ser ocultado; oferece voltar a mostrar mais meses. */}
+              <TouchableOpacity style={styles.acao} onPress={() => { definirOcultos(() => []); setMesEditando(null) }}>
+                <Ionicons name="albums-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Selecionar todos os meses</Text>
+              </TouchableOpacity>
+              {mesesFuturos.length > 0 && <TouchableOpacity style={styles.acao} onPress={() => { definirOcultos((meses) => meses.filter((m) => m < mesAtual())); setMesEditando(null) }}>
+                <Ionicons name="arrow-forward-circle-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Selecionar os meses futuros (a partir de {rotuloMes(mesAtual())})</Text>
+              </TouchableOpacity>}
+            </> : <>
+              <TouchableOpacity style={styles.acao} onPress={() => mesEditando && ocultarMes(mesEditando)}>
+                <Ionicons name="eye-off-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Ocultar da tela (mantém os valores)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.acao} onPress={() => mesEditando && selecionarSomenteMes(mesEditando)}>
+                <Ionicons name="locate-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Selecionar mês (mostrar só ele)</Text>
+              </TouchableOpacity>
+            </>}
             {modoEdicao && <TouchableOpacity style={styles.acao} onPress={() => mesEditando && copiarMesParaSeguintes(mesEditando)}>
               <Ionicons name="copy-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Copiar valores para os meses seguintes</Text>
             </TouchableOpacity>}
-            <TouchableOpacity style={styles.acao} onPress={() => mesEditando && ocultarMes(mesEditando)}>
-              <Ionicons name="eye-off-outline" size={18} color={colors.primary} /><Text style={styles.acaoTexto}>Ocultar da tela (mantém os valores)</Text>
-            </TouchableOpacity>
             {modoEdicao && <TouchableOpacity style={styles.acao} onPress={() => mesEditando && removerMes(mesEditando)}>
               <Ionicons name="trash-outline" size={18} color={colors.expense} /><Text style={[styles.acaoTexto, { color: colors.expense }]}>Remover coluna do mês</Text>
             </TouchableOpacity>}
           </View>
         </TouchableOpacity>
       </Modal>
+
 
       <Modal visible={ajudaVisivel} transparent animationType="fade" onRequestClose={() => setAjudaVisivel(false)}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setAjudaVisivel(false)}>
@@ -617,11 +692,11 @@ export function PlanejamentoFinanceiroScreen() {
             </View>
             <View style={styles.ajudaItem}>
               <Ionicons name="remove-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
-              <Text style={styles.ajudaTexto}>Gastos são digitados como valores positivos; em entradas, use "-" para descontos.</Text>
+              <Text style={styles.ajudaTexto}>Gastos são digitados como valores positivos; em entradas, use "-" para descontos. A linha "Ajustes" (entre o saldo do mês e o acumulado) soma ao acumulado; use "-" para subtrair. O mês atual tem borda e os meses passados ficam em cinza.</Text>
             </View>
             <View style={styles.ajudaItem}>
               <Ionicons name="calendar-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
-              <Text style={styles.ajudaTexto}>Toque no mês para copiá-lo, ocultá-lo ou removê-lo. Em "Meses" você escolhe quais meses aparecem; o saldo acumulado considera também os ocultos.</Text>
+              <Text style={styles.ajudaTexto}>Toque no mês para ocultá-lo ou selecioná-lo (fica só ele na tela, como escolher um único mês em Filtros). Sempre que houver um único mês na tela, os gráficos dele aparecem à direita (no celular, abaixo). No modo edição, também dá para copiar ou remover o mês. Em "Meses" você escolhe quais meses aparecem; o saldo acumulado considera também os ocultos.</Text>
             </View>
             <View style={[styles.modalRodape, { justifyContent: 'flex-end' }]}>
               <TouchableOpacity style={styles.botaoPrimario} onPress={() => setAjudaVisivel(false)}><Text style={{ color: '#fff', fontWeight: '700' }}>Entendi</Text></TouchableOpacity>
@@ -816,10 +891,23 @@ const styles = StyleSheet.create({
   grupoQtd: { fontSize: 11, fontWeight: '700', color: colors.muted, marginRight: 6 },
   subtotalGrupo: { color: colors.textSecondary, fontStyle: 'italic', fontSize: 12 },
   grupoItem: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  // Linha inteira abaixo do título, para o resumo das escolhas caber sem cortar.
+  botaoMenu: { flexDirection: 'row', alignItems: 'center', gap: 6, width: '100%', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  botaoMenuAberto: { backgroundColor: colors.primary, borderColor: colors.primary },
+  botaoMenuTexto: { flex: 1, fontSize: 12, fontWeight: '700', color: colors.primary },
   botaoAjuda: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  botaoAjudaI: { position: 'absolute', top: 3, fontSize: 13, fontWeight: '900', color: colors.primary },
   ajudaItem: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 8 },
   ajudaTexto: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
+  // Mês atual: valores em negrito (sem borda na coluna) e contorno só no rótulo do mês.
+  centro: { fontWeight: '700' },
+  // Meses passados: só o texto em cinza, sem preenchimento na coluna.
+  passado: { color: '#94A3B8' },
+  rotuloMesAtual: { paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: colors.primary, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.surface, textDecorationLine: 'none', lineHeight: 18 },
+  nomeAjuste: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, fontStyle: 'italic' },
+  focoLinha: { flexDirection: 'row', alignItems: 'flex-start', paddingRight: 16 },
+  focoColuna: { flexDirection: 'column' },
+  painelGraficos: { backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: 16 },
+  painelGraficosTitulo: { fontSize: 15, fontWeight: '800', color: colors.text, marginBottom: 12 },
   dicaModal: { fontSize: 12, color: colors.muted, lineHeight: 17 },
   container: { flex: 1, backgroundColor: colors.background },
   header: { padding: 16, paddingBottom: 10, gap: 10 },

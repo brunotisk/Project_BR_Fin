@@ -355,6 +355,8 @@ export type DadosPlanejamento = {
   mesesOcultos?: string[]
   /** Grupos para agrupar linhas de gastos. */
   grupos?: GrupoPlanejamento[]
+  /** Ajustes por mês, somados (ou subtraídos, se negativos) ao saldo acumulado. */
+  ajustes?: Record<string, number>
   linhas: LinhaPlanejamento[]
 }
 
@@ -385,6 +387,7 @@ function normalizarPlanejamento(bruto: any): DadosPlanejamento | null {
   return {
     meses: bruto.meses.filter((m: unknown) => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m)),
     mesesOcultos: Array.isArray(bruto.mesesOcultos) ? bruto.mesesOcultos.filter((m: unknown) => typeof m === 'string') : [],
+    ajustes: bruto.ajustes && typeof bruto.ajustes === 'object' ? Object.fromEntries(Object.entries(bruto.ajustes).map(([k, v]) => [k, Number(v) || 0]).filter(([, v]) => v !== 0)) : {},
     grupos: Array.isArray(bruto.grupos) ? bruto.grupos.filter((g: any) => g && typeof g.id === 'string').map((g: any) => ({ id: g.id, nome: String(g.nome ?? '') })) : [],
     linhas: bruto.linhas
       .filter((l: any) => l && typeof l.id === 'string')
