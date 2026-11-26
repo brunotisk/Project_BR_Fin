@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Modal,
@@ -125,6 +125,8 @@ export function CartoesControleScreen() {
   const [vigentes, setVigentes] = useState<CartaoControleItem[]>([])
   const [detalhados, setDetalhados] = useState<CartaoControleItem[]>([])
   const [atualizadoEm, setAtualizadoEm] = useState('')
+  // No computador os três meses aparecem juntos; guarda os cartões de cada um.
+  const [itensPorMes, setItensPorMes] = useState<Record<string, CartaoControleItem[]>>({})
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [copiandoCartoes, setCopiandoCartoes] = useState(false)
@@ -228,6 +230,40 @@ export function CartoesControleScreen() {
     }, [carregar, carregarCartoesDoSimulador, carregarDadosSimulador])
   )
 
+  const carregarTodosMeses = useCallback(async () => {
+    try {
+      const lista = await Promise.all(OPCOES_MESES_CONTROLE.map(async (opcao) => {
+        const dados = await carregarCartoesControle(opcao.valor)
+        return [opcao.valor, [...dados.vigentes, ...dados.detalhados]] as [string, CartaoControleItem[]]
+      }))
+      setItensPorMes((atual) => ({ ...atual, ...Object.fromEntries(lista) }))
+    } catch (erro) {
+      console.warn('Erro ao carregar os meses dos cartões:', erro)
+    }
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      if (desktop) void carregarTodosMeses()
+    }, [desktop, carregarTodosMeses])
+  )
+
+  // O mês ativo (o que é editado/salvo) reflete sempre o estado atual na grade de meses.
+  useEffect(() => {
+    if (!desktop || loading) return
+    setItensPorMes((atual) => ({ ...atual, [mesAtual]: [...vigentes, ...detalhados] }))
+  }, [desktop, loading, mesAtual, vigentes, detalhados])
+
+  // Torna um mês o ativo antes de editar/adicionar nele (computador).
+  const ativarMes = (mes: string) => {
+    if (mes === mesAtual) return
+    const itens = itensPorMes[mes] || []
+    setMesAtual(mes)
+    salvarMesCartoesControleSelecionado(mes)
+    setVigentes(itens.filter((item) => item.tabela_tipo === 'vigente'))
+    setDetalhados(itens.filter((item) => item.tabela_tipo !== 'vigente'))
+  }
+
   const mudarMes = (novoMes: string) => {
     setMesAtual(novoMes)
     salvarMesCartoesControleSelecionado(novoMes)
@@ -236,12 +272,14 @@ export function CartoesControleScreen() {
 
   const copiarCartoesDoMesAtual = async () => {
     const mesAtualReferencia = OPCOES_MESES_CONTROLE[1].valor
-    if (mesAtual !== OPCOES_MESES_CONTROLE[2].valor || copiandoCartoes) return
+    const mesDestino = OPCOES_MESES_CONTROLE[2].valor
+    if ((!desktop && mesAtual !== mesDestino) || copiandoCartoes) return
+    if (desktop) ativarMes(mesDestino)
     setCopiandoCartoes(true)
     try {
       const [origem, destino] = await Promise.all([
         carregarCartoesControle(mesAtualReferencia),
-        carregarCartoesControle(mesAtual)
+        carregarCartoesControle(mesDestino)
       ])
       const cartoesOrigem = [...origem.vigentes, ...origem.detalhados]
       const cartoesDestino = [...destino.vigentes, ...destino.detalhados]
@@ -253,7 +291,7 @@ export function CartoesControleScreen() {
       const novos = cartoesOrigem.filter((item) => !existentes.has(`${item.tabela_tipo}|${item.cartao_nome.trim().toLowerCase()}`)).map((item) => ({
         ...item,
         id: gerarUuidPoker(),
-        mes_referencia: mesAtual,
+        mes_referencia: mesDestino,
         status: 'aberto' as const,
         situacao_pagamento: 'nao_pago' as const
       }))
@@ -263,10 +301,10 @@ export function CartoesControleScreen() {
       }
       const novosVigentes = [...destino.vigentes, ...novos.filter((item) => item.tabela_tipo === 'vigente')]
       const novosDetalhados = [...destino.detalhados, ...novos.filter((item) => item.tabela_tipo === 'detalhado_ma')]
-      await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesAtual)
+      await salvarCartoesControle([...novosVigentes, ...novosDetalhados], mesDestino)
       setVigentes(novosVigentes)
       setDetalhados(novosDetalhados)
-      notify('Cartões copiados', `${novos.length} cartão(ões) copiado(s) para ${mesAtual} com status Aberto.`)
+      notify('Cartões copiados', `${novos.length} cartão(ões) copiado(s) para ${mesDestino} com status Aberto.`)
     } catch (erro: any) {
       notify('Não foi possível copiar os cartões', erro?.message || 'Tente novamente.')
     } finally {
@@ -274,7 +312,7 @@ export function CartoesControleScreen() {
     }
   }
 
-  const abrirModalNovo = (tipo: 'vigente' | 'detalhado_ma') => {
+  const abrirModalNovo = (tipo: 'vigente' | 'detalhado_ma', mes = mesAtual) => {
     setTabelaAlvo(tipo)
     setItemEditando(null)
     setFormNome('')
@@ -287,7 +325,7 @@ export function CartoesControleScreen() {
     setFormStatus('aberto')
     setFormSituacaoPagamento('nao_pago')
     setCampoCalendario(null)
-    setMesCalendario(mesReferenciaParaChave(mesAtual))
+    setMesCalendario(mesReferenciaParaChave(mes))
     setModalVisible(true)
   }
 
@@ -420,8 +458,9 @@ export function CartoesControleScreen() {
   }
 
   const mesesDisponiveis = OPCOES_MESES_CONTROLE
-  const itensDoMes = [...vigentes, ...detalhados].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
-  const totalAPagar = itensDoMes.reduce((total, item) => total + (item.situacao_pagamento === 'pago' ? 0 : Number(item.valor) || 0), 0)
+  const ordenarItens = (itens: CartaoControleItem[]) => [...itens].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))
+  const totalDoMes = (itens: CartaoControleItem[]) => itens.reduce((total, item) => total + (item.situacao_pagamento === 'pago' ? 0 : Number(item.valor) || 0), 0)
+  const itensDoMes = ordenarItens([...vigentes, ...detalhados])
   const chavesCartoesSelecionados = new Set(simulador.cartoes_selecionados)
   const cartoesSimuladorSelecionados = opcoesCartoesSimulador
     .filter((opcao) => chavesCartoesSelecionados.has(opcao.chave))
@@ -528,6 +567,69 @@ export function CartoesControleScreen() {
     }
   }
 
+  // Tabela de faturas de um mês (no computador, os três meses aparecem um embaixo do outro).
+  const renderTabelaMes = (mes: string, itens: CartaoControleItem[]) => <>
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionTitleBadge}>
+            <Ionicons name="card-outline" size={16} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Faturas · {mes}</Text>
+          </View>
+          {desktop && <View style={styles.headerActions}>
+            {mes === OPCOES_MESES_CONTROLE[2].valor && (
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Copiar cartões de ${OPCOES_MESES_CONTROLE[1].mes}`} disabled={copiandoCartoes} style={[styles.headerActionButton, copiandoCartoes && styles.headerActionDisabled]} onPress={() => void copiarCartoesDoMesAtual()}>
+                <Ionicons name="copy-outline" size={19} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Adicionar cartão em ${mes}`} style={styles.headerActionButton} onPress={() => { ativarMes(mes); abrirModalNovo('vigente', mes) }}>
+              <Ionicons name="add" size={23} color={colors.primary} />
+            </TouchableOpacity>
+          </View>}
+        </View>
+
+        <View style={styles.tableCard}>
+          <View style={[styles.tableHeaderSky, mes !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
+            <Text style={[styles.colHeader, { flex: 0.78, minWidth: 0 }]}>Cartão</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.32, minWidth: 0 }]}>Valor</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Fech.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Pgto.</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.68, minWidth: 0 }]}>Status</Text>
+            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.5, minWidth: 0 }]}>Sit.</Text>
+          </View>
+
+          {itens.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.tableRow}
+              onPress={() => { ativarMes(mes); abrirModalEditar(item) }}
+            >
+              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 0.78, minWidth: 0, fontSize: 10 }]}>{item.cartao_nome}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.cellText, styles.colRight, { flex: 1.32, minWidth: 0, fontSize: 11 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
+              <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
+                {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
+              </Text>
+              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
+              <View style={[styles.statusCell, { flex: 0.68 }]}><Text accessibilityLabel={`Status: ${item.status === 'fechado' ? 'Fechado' : 'Aberto'}`} style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'F' : 'A'}</Text></View>
+              <View style={[styles.statusCell, { flex: 0.5 }]}>
+                <Text
+                  accessibilityLabel={`Situação: ${item.situacao_pagamento === 'pago' ? 'Pago' : item.situacao_pagamento === 'vencida' ? 'Vencida' : 'Não pago'}`}
+                  style={[styles.situacaoBadge, item.situacao_pagamento === 'pago' ? styles.situacaoBadgePago : item.situacao_pagamento === 'vencida' ? styles.situacaoBadgeVencida : styles.situacaoBadgeNaoPago]}
+                >{item.situacao_pagamento === 'pago' ? 'P' : item.situacao_pagamento === 'vencida' ? 'V' : 'NP'}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+
+          {itens.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Nenhum cartão cadastrado para {mes}.</Text>
+            </View>
+          )}
+          <View style={styles.totalPagarRow}>
+            <Text style={styles.totalPagarLabel}>Total a pagar</Text>
+            <Text style={styles.totalPagarValor}>{formatarMoedaSemCentavos(totalDoMes(itens))}</Text>
+          </View>
+        </View>
+  </>
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -538,9 +640,9 @@ export function CartoesControleScreen() {
         <View style={styles.header}>
           <View style={styles.headerInfo}>
             <Text style={styles.title}>Cartões</Text>
-            <Text style={styles.subtitle}>Controle de faturas · {mesAtual}</Text>
+            <Text style={styles.subtitle}>Controle de faturas{desktop ? '' : ` · ${mesAtual}`}</Text>
           </View>
-          <View style={styles.headerActions}>
+          {!desktop && <View style={styles.headerActions}>
             {mesAtual === OPCOES_MESES_CONTROLE[2].valor && (
               <TouchableOpacity
                 accessibilityRole="button"
@@ -561,11 +663,11 @@ export function CartoesControleScreen() {
             >
               <Ionicons name="add" size={23} color={colors.primary} />
             </TouchableOpacity>
-          </View>
+          </View>}
         </View>
 
         {/* Seletor de mêsFechamento */}
-        <View style={styles.mesSelectorRow}>
+        {!desktop && <View style={styles.mesSelectorRow}>
           <Text style={styles.mesSelectorLabel}>Período</Text>
           <View style={styles.monthChoiceRow}>
             {mesesDisponiveis.map((m) => (
@@ -579,60 +681,14 @@ export function CartoesControleScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </View>}
 
         {/* No computador: faturas à esquerda, simulador de contas à direita. */}
         <View style={desktop ? styles.desktopColunas : undefined}>
         <View style={desktop ? styles.desktopColunaPrincipal : undefined}>
-        <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionTitleBadge}>
-            <Ionicons name="card-outline" size={16} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Faturas · {mesAtual}</Text>
-          </View>
-        </View>
-
-        <View style={styles.tableCard}>
-          <View style={[styles.tableHeaderSky, mesAtual !== OPCOES_MESES_CONTROLE[1].valor && styles.tableHeaderOtherMonth]}>
-            <Text style={[styles.colHeader, { flex: 0.78, minWidth: 0 }]}>Cartão</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 1.32, minWidth: 0 }]}>Valor</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Fech.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>Pgto.</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.68, minWidth: 0 }]}>Status</Text>
-            <Text style={[styles.colHeader, styles.colCenter, { flex: 0.5, minWidth: 0 }]}>Sit.</Text>
-          </View>
-
-          {itensDoMes.map((item) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.tableRow}
-              onPress={() => abrirModalEditar(item)}
-            >
-              <Text numberOfLines={1} style={[styles.cellTextBold, { flex: 0.78, minWidth: 0, fontSize: 10 }]}>{item.cartao_nome}</Text>
-              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.cellText, styles.colRight, { flex: 1.32, minWidth: 0, fontSize: 11 }]}>{item.valor > 0 ? formatarMoedaSemCentavos(item.valor) : '-'}</Text>
-              <Text style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0, fontStyle: item.fechamento_estimado ? 'italic' : 'normal' }]}>
-                {item.fechamento ? <>{formatarDiaMesControle(item.fechamento)}{item.fechamento_estimado && <Text style={styles.estimatedAsterisk}>*</Text>}</> : '-'}
-              </Text>
-              <Text numberOfLines={1} style={[styles.cellMuted, styles.colCenter, { flex: 0.72, minWidth: 0 }]}>{item.pagamento ? formatarDiaMesControle(item.pagamento) : '-'}</Text>
-              <View style={[styles.statusCell, { flex: 0.68 }]}><Text accessibilityLabel={`Status: ${item.status === 'fechado' ? 'Fechado' : 'Aberto'}`} style={[styles.statusBadge, item.status === 'fechado' ? styles.statusClosed : styles.statusOpen]}>{item.status === 'fechado' ? 'F' : 'A'}</Text></View>
-              <View style={[styles.statusCell, { flex: 0.5 }]}>
-                <Text
-                  accessibilityLabel={`Situação: ${item.situacao_pagamento === 'pago' ? 'Pago' : item.situacao_pagamento === 'vencida' ? 'Vencida' : 'Não pago'}`}
-                  style={[styles.situacaoBadge, item.situacao_pagamento === 'pago' ? styles.situacaoBadgePago : item.situacao_pagamento === 'vencida' ? styles.situacaoBadgeVencida : styles.situacaoBadgeNaoPago]}
-                >{item.situacao_pagamento === 'pago' ? 'P' : item.situacao_pagamento === 'vencida' ? 'V' : 'NP'}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          {itensDoMes.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Nenhum cartão cadastrado para {mesAtual}.</Text>
-            </View>
-          )}
-          <View style={styles.totalPagarRow}>
-            <Text style={styles.totalPagarLabel}>Total a pagar</Text>
-            <Text style={styles.totalPagarValor}>{formatarMoedaSemCentavos(totalAPagar)}</Text>
-          </View>
-        </View>
+        {desktop
+          ? OPCOES_MESES_CONTROLE.map((m) => <View key={m.valor}>{renderTabelaMes(m.valor, m.valor === mesAtual ? itensDoMes : ordenarItens(itensPorMes[m.valor] || []))}</View>)
+          : renderTabelaMes(mesAtual, itensDoMes)}
 
         <View style={styles.legendCard}>
           <View style={styles.legendBubblesRow}>

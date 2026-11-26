@@ -1,8 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { ActivityIndicator, PanResponder, Text, TouchableOpacity, View } from 'react-native'
-import { useMemo } from 'react'
-import { useNavigation, useRoute } from '@react-navigation/native'
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { TransacoesScreen } from '../screens/TransacoesScreen'
@@ -32,31 +30,13 @@ const Tab = createBottomTabNavigator<BottomTabParamList>()
 
 function comSwipe(Screen: React.ComponentType<any>, larguraMaximaDesktop = 1100) {
   return function SwipeableTab(props: any) {
-    const navigation = useNavigation<any>()
-    const route = useRoute()
-    const { acesso, carregado } = useModuleAccess()
     const { modo } = useLayoutMode()
-    const ordem = ['TodoTab', 'AgendaTab', 'FinanceiroTab', 'ConfiguracoesTab']
-    const pan = useMemo(() => PanResponder.create({
-      onMoveShouldSetPanResponder: (_event, gesture) => gesture.y0 < 72 && Math.abs(gesture.dx) > 70 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
-      onPanResponderRelease: (_event, gesture) => {
-        if (!carregado) return
-        const atual = ordem.indexOf(route.name)
-        const direcao = gesture.dx < 0 ? 1 : -1
-        let indice = atual + direcao
-        while (indice >= 0 && indice < ordem.length) {
-          const proximo = ordem[indice]
-          const modulo: ModuleKey | null = proximo === 'TodoTab' ? 'todo' : proximo === 'AgendaTab' ? 'agenda' : proximo === 'FinanceiroTab' ? 'financeiro' : null
-          if (!modulo || acesso[modulo]) { navigation.navigate(proximo); return }
-          indice += direcao
-        }
-      }
-    }), [navigation, route.name, acesso, carregado])
     if (modo === 'desktop') {
       // No computador não há gesto de deslizar; o conteúdo fica centralizado com largura máxima.
       return <View style={{ flex: 1, backgroundColor: colors.background }}><View style={{ flex: 1, width: '100%', maxWidth: larguraMaximaDesktop, alignSelf: 'center' }}><Screen {...props} /></View></View>
     }
-    return <View style={{ flex: 1 }} {...pan.panHandlers}><Screen {...props} /></View>
+    // Troca de aba por swipe desativada: navegação só pela barra de abas.
+    return <View style={{ flex: 1 }}><Screen {...props} /></View>
   }
 }
 

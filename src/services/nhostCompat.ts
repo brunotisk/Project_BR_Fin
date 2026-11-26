@@ -22,9 +22,9 @@ function graphQLValue(value: unknown): string {
   if (value === null) return 'null'
   if (typeof value === 'string') return JSON.stringify(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value)) return `[${value.map(graphQLValue).join(', ')}]`
+  if (Array.isArray(value)) return `[${value.map((item) => item === undefined ? 'null' : graphQLValue(item)).join(', ')}]`
   if (typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>).map(([key, item]) => `${graphQLName(key)}: ${graphQLValue(item)}`).join(', ')}}`
+    return `{${Object.entries(value as Record<string, unknown>).filter(([, item]) => item !== undefined).map(([key, item]) => `${graphQLName(key)}: ${graphQLValue(item)}`).join(', ')}}`
   }
   throw new Error('Valor não suportado em uma operação GraphQL.')
 }

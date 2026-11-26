@@ -1,4 +1,6 @@
 -- Result rows let Hasura expose the app's existing RPCs as GraphQL functions.
+-- Nas funções plpgsql "void", RETURN QUERY devolve a coluna (select true), não row(...)::tipo:
+-- o registro composto numa coluna só causava erro 42804 e desfazia a ação inteira.
 create table if not exists public.nhost_rpc_uuid_result (result uuid);
 create table if not exists public.nhost_rpc_void_result (result boolean);
 create table if not exists public.nhost_rpc_membro_result (
@@ -38,7 +40,7 @@ returns setof public.nhost_rpc_void_result
 language plpgsql volatile set search_path = public, auth as $$
 begin
   perform public.aceitar_convite_agenda(p_convite_id);
-  return query select row(true)::public.nhost_rpc_void_result;
+  return query select true;
 end;
 $$;
 
@@ -47,7 +49,7 @@ returns setof public.nhost_rpc_void_result
 language plpgsql volatile set search_path = public, auth as $$
 begin
   perform public.atualizar_cor_agendas(p_cor);
-  return query select row(true)::public.nhost_rpc_void_result;
+  return query select true;
 end;
 $$;
 
@@ -68,7 +70,7 @@ returns setof public.nhost_rpc_void_result
 language plpgsql volatile set search_path = public, auth as $$
 begin
   perform public.excluir_sessao_poker(p_mes_base, p_data_cartao);
-  return query select row(true)::public.nhost_rpc_void_result;
+  return query select true;
 end;
 $$;
 
@@ -83,6 +85,6 @@ returns setof public.nhost_rpc_void_result
 language plpgsql volatile set search_path = public, auth as $$
 begin
   perform public.excluir_local_sessao_poker(p_mes_base, p_data_cartao, p_local);
-  return query select row(true)::public.nhost_rpc_void_result;
+  return query select true;
 end;
 $$;

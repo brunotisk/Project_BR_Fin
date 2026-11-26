@@ -148,6 +148,7 @@ export function PlanejamentoFinanceiroScreen() {
   const [seletorMeses, setSeletorMeses] = useState(false)
   // A tela abre travada; o botão Editar libera alterações até ser travada de novo.
   const [modoEdicao, setModoEdicao] = useState(false)
+  const [ajudaVisivel, setAjudaVisivel] = useState(false)
   const [gerenciarGrupos, setGerenciarGrupos] = useState(false)
   // Visão dos gastos: detalhada (linha a linha, editável) ou agrupada (um total por grupo, só leitura).
   const [visaoGastos, setVisaoGastosEstado] = useState<VisaoGastos>(lerVisaoGastos)
@@ -395,7 +396,13 @@ export function PlanejamentoFinanceiroScreen() {
       <View style={styles.header}>
         {/* Título com o box de edição ao lado; Filtros e Zoom à direita na mesma linha. */}
         <View style={styles.linhaTitulo}>
-          <Text style={styles.title}>Planejamento</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.title}>Planejamento</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Como usar o planejamento" hitSlop={8} onPress={() => setAjudaVisivel(true)} style={styles.botaoAjuda}>
+              <Ionicons name="chatbubble-outline" size={24} color={colors.primary} />
+              <Text style={styles.botaoAjudaI}>i</Text>
+            </TouchableOpacity>
+          </View>
           <View style={[styles.box, modoEdicao && styles.boxEdicaoAtivo]}>
             <TouchableOpacity accessibilityRole="button" accessibilityState={{ selected: modoEdicao, disabled: agrupada }} disabled={agrupada} style={[styles.botaoMes, modoEdicao && styles.botaoEdicaoAtivo, agrupada && { opacity: 0.5 }]} onPress={() => setModoEdicao((e) => !e)}>
               <Ionicons name={modoEdicao ? 'lock-open-outline' : agrupada ? 'lock-closed-outline' : 'create-outline'} size={14} color={modoEdicao ? '#fff' : colors.primary} />
@@ -414,7 +421,7 @@ export function PlanejamentoFinanceiroScreen() {
             </>}
           </View>
           {/* Boxes de visualização (não alteram dados), alinhados à direita. */}
-          <View style={styles.linhaBoxes}>
+          <View style={[styles.linhaBoxes, modo !== 'desktop' && styles.linhaBoxesCelular]}>
             <View style={styles.box}>
               <Text style={styles.boxTitulo}>Gastos</Text>
               {grupos.length > 0 && <View style={styles.zoomGrupo}>
@@ -547,7 +554,6 @@ export function PlanejamentoFinanceiroScreen() {
           return <ScrollView horizontal contentContainerStyle={{ paddingHorizontal: 12 }}>{caixa}</ScrollView>
         })()}
         {visiveis.length === 0 && <Text style={[styles.dica, { color: colors.expense }]}>Nenhum mês selecionado. Toque em "Meses" para escolher quais aparecem.</Text>}
-        <Text style={styles.dica}>A tela abre travada: toque em "Editar" para alterar valores, linhas e meses, e em "Concluir edição" para travar de novo. No modo edição, toque no nome para renomear, mudar de tipo ou de grupo de gastos, ou excluir, e use as setas para reordenar. O botão "%" mostra quanto cada grupo representa no total de gastos do mês e, em cada gasto de um grupo, "% do grupo | % do total" (gastos sem grupo mostram só o % do total). Em "Grupos" você cria grupos de gastos; com grupos criados, escolha a visão Detalhada (editável) ou Agrupada (um total por grupo, só leitura). Gastos são digitados como valores positivos; em entradas, use "-" para descontos. Toque no mês para copiá-lo, ocultá-lo ou removê-lo. Em "Meses" você escolhe quais meses aparecem; o saldo acumulado considera também os ocultos.</Text>
       </ScrollView>
 
       <ModalLinha
@@ -586,6 +592,41 @@ export function PlanejamentoFinanceiroScreen() {
               <Ionicons name="trash-outline" size={18} color={colors.expense} /><Text style={[styles.acaoTexto, { color: colors.expense }]}>Remover coluna do mês</Text>
             </TouchableOpacity>}
           </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={ajudaVisivel} transparent animationType="fade" onRequestClose={() => setAjudaVisivel(false)}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setAjudaVisivel(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modal}>
+            <Text style={styles.modalTitulo}>Como usar o planejamento</Text>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="lock-closed-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>A tela abre travada: toque em "Editar" para alterar valores, linhas e meses, e em "Concluir edição" para travar de novo.</Text>
+            </View>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="create-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>No modo edição, toque no nome da linha para renomear, mudar de tipo ou de grupo, ou excluir. Use as setas para reordenar.</Text>
+            </View>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="pie-chart-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>O botão "%" mostra quanto cada grupo representa no total de gastos do mês e, em cada gasto de um grupo, "% do grupo | % do total". Gastos sem grupo mostram só o % do total.</Text>
+            </View>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="folder-open-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>Em "Grupos" você cria grupos de gastos. Com grupos criados, escolha a visão Detalhada (editável) ou Agrupada (um total por grupo, só leitura).</Text>
+            </View>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="remove-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>Gastos são digitados como valores positivos; em entradas, use "-" para descontos.</Text>
+            </View>
+            <View style={styles.ajudaItem}>
+              <Ionicons name="calendar-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+              <Text style={styles.ajudaTexto}>Toque no mês para copiá-lo, ocultá-lo ou removê-lo. Em "Meses" você escolhe quais meses aparecem; o saldo acumulado considera também os ocultos.</Text>
+            </View>
+            <View style={[styles.modalRodape, { justifyContent: 'flex-end' }]}>
+              <TouchableOpacity style={styles.botaoPrimario} onPress={() => setAjudaVisivel(false)}><Text style={{ color: '#fff', fontWeight: '700' }}>Entendi</Text></TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -775,12 +816,18 @@ const styles = StyleSheet.create({
   grupoQtd: { fontSize: 11, fontWeight: '700', color: colors.muted, marginRight: 6 },
   subtotalGrupo: { color: colors.textSecondary, fontStyle: 'italic', fontSize: 12 },
   grupoItem: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  botaoAjuda: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  botaoAjudaI: { position: 'absolute', top: 3, fontSize: 13, fontWeight: '900', color: colors.primary },
+  ajudaItem: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 8 },
+  ajudaTexto: { flex: 1, fontSize: 13, color: colors.text, lineHeight: 18 },
   dicaModal: { fontSize: 12, color: colors.muted, lineHeight: 17 },
   container: { flex: 1, backgroundColor: colors.background },
   header: { padding: 16, paddingBottom: 10, gap: 10 },
   linhaTitulo: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
   linhaBoxes: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginLeft: 'auto' },
-  box: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, padding: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.primaryLight },
+  // No celular os boxes ocupam uma linha própria e quebram, em vez de sair da tela.
+  linhaBoxesCelular: { width: '100%', marginLeft: 0 },
+  box: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, maxWidth: '100%', flexShrink: 1, padding: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.primaryLight },
   boxEdicaoAtivo: { borderColor: colors.primary },
   boxTitulo: { fontSize: 11, fontWeight: '800', color: colors.textSecondary, textTransform: 'uppercase', paddingHorizontal: 4 },
   botaoEdicaoAtivo: { backgroundColor: colors.primary, borderColor: colors.primary },
