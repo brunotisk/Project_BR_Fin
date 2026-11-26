@@ -167,12 +167,27 @@ try {
 
   for (const table of tables) {
     const tableRef = { schema: 'public', name: table.name }
-    const filter = ownerFilter(table)
-    if (table.name.startsWith('nhost_rpc_')) continue
-    if (!filter) throw new Error(`Sem regra de proprietário definida para public.${table.name}; não vou expor essa tabela.`)
-    const columns = table.columns
     const existing = (currentSource.tables || []).find((item) => item.table.name === table.name)
     const perms = existing || {}
+
+    // Hasura só expõe uma função GraphQL para um papel se o tipo retornado
+    // pela função estiver rastreado e tiver permissão SELECT para esse papel.
+    // Estas tabelas auxiliares são vazias: funcionam apenas como formato de
+    // retorno das RPCs e não devem receber permissões de escrita.
+    if (table.name.startsWith('nhost_rpc_')) {
+      if (!tracked.has(`${tableRef.schema}.${tableRef.name}`)) {
+        commands.push({ type: 'pg_track_table', args: { source, table: tableRef } })
+        tracked.add(`${tableRef.schema}.${tableRef.name}`)
+      }
+      if (!(perms.select_permissions || []).some((item) => item.role === role)) {
+        commands.push({ type: 'pg_create_select_permission', args: { source, table: tableRef, role, permission: { columns: table.columns, filter: {}, allow_aggregations: false } } })
+      }
+      continue
+    }
+
+    const filter = ownerFilter(table)
+    if (!filter) throw new Error(`Sem regra de proprietário definida para public.${table.name}; não vou expor essa tabela.`)
+    const columns = table.columns
 
     if (!(perms.select_permissions || []).some((item) => item.role === role)) {
       commands.push({ type: 'pg_create_select_permission', args: { source, table: tableRef, role, permission: { columns, filter, allow_aggregations: false } } })
@@ -257,6 +272,11 @@ try {
   } else {
     console.log('As tabelas e permissões já estão configuradas no Hasura.')
   }
+  // A migration SQL pode criar/alterar uma função que já está rastreada.
+  // Nesse caso não há operações de metadata, mas o schema cache ainda precisa
+  // ser recarregado para expor o campo GraphQL atualizado.
+  await metadata('reload_metadata', {})
+  console.log('Schema GraphQL do Hasura recarregado.')
 } finally {
   await pool.end()
 }

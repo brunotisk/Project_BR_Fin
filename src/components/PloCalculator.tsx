@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { colors } from '../theme'
 import { carregarJogosCalculadoraPoker } from '../services/planilhasService'
+import { useLayoutMode } from '../services/LayoutModeProvider'
 import {
   CardData,
   getCardData,
@@ -55,6 +56,8 @@ const VARIANTS: { id: PokerGameVariant; label: string; sub: string }[] = [
 ]
 
 export function PloCalculator() {
+  // No computador, o seletor de cartas ocupa só a metade direita da tela.
+  const desktop = useLayoutMode().modo === 'desktop'
   const [variant, setVariant] = useState<PokerGameVariant>('holdem')
   const [availableGames, setAvailableGames] = useState<PokerGameVariant[]>(carregarJogosCalculadoraPoker())
 
@@ -199,6 +202,13 @@ export function PloCalculator() {
     setSimInfo(null)
   }
 
+  // No computador o seletor fica sempre aberto: sem slot ativo, ativa o primeiro vazio.
+  useEffect(() => {
+    if (!desktop || activeSlot) return
+    const primeiro: TargetSlot = encontrarProximoSlotVazio({ type: 'player', playerIndex: -1, cardIndex: -1 } as any) ?? null
+    if (primeiro) setActiveSlot(primeiro)
+  }, [desktop, activeSlot, players, board])
+
   // Abrir Picker para um slot específico
   const abrirPicker = (slot: TargetSlot) => {
     setActiveSlot(slot)
@@ -317,8 +327,79 @@ export function PloCalculator() {
     )
   }
 
+  // Corpo do seletor de cartas: em modal no celular, fixo ao lado da calculadora no computador.
+  const renderSeletor = (inline: boolean) => <>
+            {!inline && <View style={styles.pickerHeader}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar seletor de cartas" onPress={() => setPickerVisible(false)} style={styles.pickerCloseBtn}>
+                <Ionicons name="close" size={23} color={colors.text} />
+              </TouchableOpacity>
+            </View>}
+
+            {/* No computador os espaços já aparecem na calculadora ao lado; aqui só no celular. */}
+            {!inline && <View style={styles.pickerTargets}>
+              <View style={[styles.pickerTargetGroup, styles.pickerBoardGroup]}>
+                <Text numberOfLines={1} style={[styles.pickerTargetLabel, styles.pickerBoardLabel]}>Board</Text>
+                <View style={styles.pickerTargetSlots}>
+                  {board.map((cardId, cardIndex) => (
+                    <View key={cardIndex}>
+                      {renderCardSlot(cardId, () => setActiveSlot({ type: 'board', cardIndex }), activeSlot?.type === 'board' && activeSlot.cardIndex === cardIndex, 'small')}
+                    </View>
+                  ))}
+                </View>
+              </View>
+              {players.map((player, playerIndex) => (
+                <View key={player.id} style={styles.pickerTargetGroup}>
+                  <Text numberOfLines={1} style={styles.pickerTargetLabel}>Hand P{playerIndex + 1} · {player.name}</Text>
+                  <View style={styles.pickerTargetSlots}>
+                    {player.cards.map((cardId, cardIndex) => (
+                      <View key={cardIndex}>
+                        {renderCardSlot(cardId, () => setActiveSlot({ type: 'player', playerIndex, cardIndex }), activeSlot?.type === 'player' && activeSlot.playerIndex === playerIndex && activeSlot.cardIndex === cardIndex, 'small')}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ))}
+            </View>}
+
+            {/* Ações rápidas no modal (no computador, "Limpar Carta" fica no topo da calculadora) */}
+            {!inline && <View style={styles.pickerActionsRow}>
+              <TouchableOpacity onPress={limparCartaSlotAtivo} style={styles.btnLimparCartaSlot}>
+                <Ionicons name="backspace-outline" size={15} color="#DC2626" />
+                <Text style={styles.btnLimparCartaSlotTexto}>Limpar Carta</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.btnConcluirPicker}>
+                <Text style={styles.btnConcluirPickerTexto}>Concluir</Text>
+              </TouchableOpacity>
+            </View>}
+
+            {/* Baralho em quatro colunas, uma por naipe */}
+            <Text style={styles.pickerSectionTitle}>Escolha uma carta</Text>
+            <ScrollView style={inline ? undefined : styles.deckScroll} scrollEnabled={!inline} showsVerticalScrollIndicator>
+              <View style={styles.deckGrid}>
+                {SUITS.map((suit) => (
+                  <View key={suit} style={styles.suitColumn}>
+                    {[...RANKS].reverse().map((rank) => {
+                      const rIdx = RANKS.indexOf(rank)
+                      const sIdx = SUITS.indexOf(suit)
+                      const cardId = (rIdx << 2) | sIdx
+                      const isUsed = usedCardsSet.has(cardId)
+                      return (
+                        <TouchableOpacity key={cardId} disabled={isUsed} onPress={() => selecionarCarta(cardId)} style={[styles.deckCardBtn, isUsed && styles.deckCardBtnUsed]} activeOpacity={0.6}>
+                          <Text style={[styles.deckCardRank, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{rank}</Text>
+                          <Text style={[styles.deckCardSuit, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{SUIT_SYMBOLS[suit]}</Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+  </>
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, desktop && styles.containerDesktop]}>
+      <View style={desktop ? styles.colunaCalculadora : undefined}>
       {/* ======================================================== */}
       {/* HEADER DA CALCULADORA */}
       {/* ======================================================== */}
@@ -335,6 +416,10 @@ export function PloCalculator() {
           </Text>
         </View>
 
+        {desktop && <TouchableOpacity onPress={limparCartaSlotAtivo} style={[styles.btnLimparCartaSlot, { marginRight: 8 }]} activeOpacity={0.7}>
+          <Ionicons name="backspace-outline" size={15} color="#DC2626" />
+          <Text style={styles.btnLimparCartaSlotTexto}>Limpar Carta</Text>
+        </TouchableOpacity>}
         <TouchableOpacity onPress={limparTudo} style={styles.btnReset} activeOpacity={0.7}>
           <Ionicons name="refresh-outline" size={15} color="#DC2626" />
           <Text style={styles.btnResetTexto}>Reset</Text>
@@ -541,77 +626,19 @@ export function PloCalculator() {
       {/* ======================================================== */}
       {/* MODAL CARD PICKER (DECK 52 CARTAS) */}
       {/* ======================================================== */}
-      <Modal visible={pickerVisible} transparent animationType="fade">
+      </View>
+
+      {desktop && <View style={styles.painelSeletor}>
+        {renderSeletor(true)}
+      </View>}
+
+      {!desktop && <Modal visible={pickerVisible} transparent animationType="fade">
         <View style={styles.pickerOverlay}>
           <View style={styles.pickerCard}>
-            <View style={styles.pickerHeader}>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar seletor de cartas" onPress={() => setPickerVisible(false)} style={styles.pickerCloseBtn}>
-                <Ionicons name="close" size={23} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.pickerTargets}>
-              <View style={[styles.pickerTargetGroup, styles.pickerBoardGroup]}>
-                <Text numberOfLines={1} style={[styles.pickerTargetLabel, styles.pickerBoardLabel]}>Board</Text>
-                <View style={styles.pickerTargetSlots}>
-                  {board.map((cardId, cardIndex) => (
-                    <View key={cardIndex}>
-                      {renderCardSlot(cardId, () => setActiveSlot({ type: 'board', cardIndex }), activeSlot?.type === 'board' && activeSlot.cardIndex === cardIndex, 'small')}
-                    </View>
-                  ))}
-                </View>
-              </View>
-              {players.map((player, playerIndex) => (
-                <View key={player.id} style={styles.pickerTargetGroup}>
-                  <Text numberOfLines={1} style={styles.pickerTargetLabel}>Hand P{playerIndex + 1} · {player.name}</Text>
-                  <View style={styles.pickerTargetSlots}>
-                    {player.cards.map((cardId, cardIndex) => (
-                      <View key={cardIndex}>
-                        {renderCardSlot(cardId, () => setActiveSlot({ type: 'player', playerIndex, cardIndex }), activeSlot?.type === 'player' && activeSlot.playerIndex === playerIndex && activeSlot.cardIndex === cardIndex, 'small')}
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Ações rápidas no modal */}
-            <View style={styles.pickerActionsRow}>
-              <TouchableOpacity onPress={limparCartaSlotAtivo} style={styles.btnLimparCartaSlot}>
-                <Ionicons name="backspace-outline" size={15} color="#DC2626" />
-                <Text style={styles.btnLimparCartaSlotTexto}>Limpar Carta</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setPickerVisible(false)} style={styles.btnConcluirPicker}>
-                <Text style={styles.btnConcluirPickerTexto}>Concluir</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Baralho em quatro colunas, uma por naipe */}
-            <Text style={styles.pickerSectionTitle}>Escolha uma carta</Text>
-            <ScrollView style={styles.deckScroll} showsVerticalScrollIndicator>
-              <View style={styles.deckGrid}>
-                {SUITS.map((suit) => (
-                  <View key={suit} style={styles.suitColumn}>
-                    {[...RANKS].reverse().map((rank) => {
-                      const rIdx = RANKS.indexOf(rank)
-                      const sIdx = SUITS.indexOf(suit)
-                      const cardId = (rIdx << 2) | sIdx
-                      const isUsed = usedCardsSet.has(cardId)
-                      return (
-                        <TouchableOpacity key={cardId} disabled={isUsed} onPress={() => selecionarCarta(cardId)} style={[styles.deckCardBtn, isUsed && styles.deckCardBtnUsed]} activeOpacity={0.6}>
-                          <Text style={[styles.deckCardRank, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{rank}</Text>
-                          <Text style={[styles.deckCardSuit, { color: isUsed ? '#CBD5E1' : SUIT_COLORS[suit] }]}>{SUIT_SYMBOLS[suit]}</Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+            {renderSeletor(false)}
           </View>
         </View>
-      </Modal>
+      </Modal>}
     </View>
   )
 }
@@ -981,6 +1008,24 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'stretch',
     padding: 0
+  },
+  containerDesktop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16
+  },
+  colunaCalculadora: {
+    flex: 1,
+    minWidth: 0
+  },
+  painelSeletor: {
+    flex: 1,
+    minWidth: 0,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14
   },
   pickerCard: {
     width: '100%',

@@ -248,6 +248,11 @@ function formatarValorPokerCompacto(valor: number) {
 export function PokerScreen() {
   const desktop = useLayoutMode().modo === 'desktop'
   const [visualizacaoSessoes, setVisualizacaoSessoes] = useState<'detalhado' | 'resumido' | 'graficos' | 'sessoes' | 'calc'>('resumido')
+  // No computador, o modo Detalhe mostra os locais de cada sessão lado a lado.
+  const detalheDesktop = desktop && visualizacaoSessoes === 'detalhado'
+  // Colunas de valores mais largas no computador, para a tabela não ficar espremida à direita.
+  const colBuyIn = detalheDesktop ? 150 : 82
+  const colTaxa = detalheDesktop ? 120 : 76
   const [ordenacaoResultadoGrafico, setOrdenacaoResultadoGrafico] = useState<'data_desc' | 'data_asc' | 'resultado_desc' | 'resultado_asc'>('data_desc')
   const [lancamentos, setLancamentos] = useState<LancamentoPoker[]>(LANCAMENTOS_POKER_INICIAIS)
   const [cashouts, setCashouts] = useState<CashoutsPokerMap>({})
@@ -1272,7 +1277,8 @@ export function PokerScreen() {
               </View>
               </>}
 
-              {/* Dica de rolagem lateral para celular */}
+              {/* Locais da sessão: empilhados no celular, em grade no computador (modo Detalhe). */}
+              <View style={detalheDesktop ? styles.locaisGradeDesktop : undefined}>
               {locaisSessaoVisiveis.map((local, indiceLocal) => {
                 const itensLocal = itens.filter((item) => nomeLocalCanonico(item.local, configuracoesLocais) === local)
                 const buyInLocal = itensLocal.reduce((total, item) => total + (Number(item.valor) || 0), 0)
@@ -1286,7 +1292,7 @@ export function PokerScreen() {
                 const configLocal = configuracoesLocais.find((item) => item.nome.toLowerCase() === local.toLowerCase() || item.aliases?.some((alias) => alias.toLowerCase() === local.toLowerCase()))
                 const corDoLocal = configLocal?.cor || (local.toLowerCase() === 'h2' ? '#77158D' : local.toLowerCase() === 'montecarlo' ? '#5B120E' : '#475569')
                 const logoLocal = configLocal?.fotoUrl ? { uri: configLocal.fotoUrl } : LOGOS_CLUBES[local.toLowerCase()]
-                return <View key={local} style={{ marginHorizontal: 12, marginTop: visualizacaoSessoes === 'resumido' && indiceLocal === 0 ? 12 : 0, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
+                return <View key={local} style={[{ marginHorizontal: 12, marginTop: visualizacaoSessoes === 'resumido' && indiceLocal === 0 ? 12 : 0, marginBottom: 12, borderWidth: 1, borderColor: corDoLocal, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }, detalheDesktop && styles.localCardDesktop]}>
                   <View style={{ paddingHorizontal: 12, paddingVertical: 10, backgroundColor: corDoLocal, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                     <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 }}>
                       {logoLocal && <Image accessibilityLabel={`Logo ${local}`} source={logoLocal} resizeMode="contain" style={{ width: 40, height: 40 }} />}
@@ -1316,12 +1322,12 @@ export function PokerScreen() {
                   </View>
                   {visualizacaoSessoes === 'detalhado' && <View style={[styles.tableContainer, { marginHorizontal: 8 }]}>
                     <View style={styles.tableHeader}>
-                      <Text style={[styles.th, { flex: 1.1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: 82 }]}>Buy-in</Text><Text style={[styles.th, styles.thRight, { width: 76 }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
+                      <Text style={[styles.th, { flex: 1.1 }]}>Cartão</Text><Text style={[styles.th, styles.thRight, { width: colBuyIn }]}>Buy-in</Text><Text style={[styles.th, styles.thRight, { width: colTaxa }]}>Taxa</Text><Text style={[styles.th, { width: 42 }]} />
                     </View>
                     {itensLocal.map((item, idx) => <View key={item.id} style={[styles.tr, idx % 2 === 1 && styles.trAlt]}>
                       {diaTravado ? <Text numberOfLines={1} style={[styles.tdDropdownTexto, { flex: 1.1, paddingHorizontal: 8 }]}>{item.cartao_nome || '—'}</Text> : <TouchableOpacity style={[styles.tdDropdownVerde, { flex: 1.1 }]} onPress={() => abrirDropdown(item.id, 'cartao')}><Text numberOfLines={1} style={styles.tdDropdownTexto}>{item.cartao_nome || 'Selecione cartão'}</Text><Ionicons name="chevron-down" size={12} color="#15803D" /></TouchableOpacity>}
-                      {diaTravado ? <Text style={[styles.tdEntradaValor, { width: 82, textAlign: 'right', paddingHorizontal: 6 }]}>{formatCurrency(item.valor)}</Text> : <TouchableOpacity style={[styles.tdEntradaAmarela, { width: 82 }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdEntradaValor}>{formatCurrency(item.valor)}</Text></TouchableOpacity>}
-                      {diaTravado ? <Text style={[styles.tdTaxa, { width: 76, textAlign: 'right', paddingHorizontal: 6 }]}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text> : <TouchableOpacity style={[styles.tdTaxaWrapper, { width: 76 }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdTaxa}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text></TouchableOpacity>}
+                      {diaTravado ? <Text style={[styles.tdEntradaValor, { width: colBuyIn, textAlign: 'right', paddingHorizontal: 6 }]}>{formatCurrency(item.valor)}</Text> : <TouchableOpacity style={[styles.tdEntradaAmarela, { width: colBuyIn }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdEntradaValor}>{formatCurrency(item.valor)}</Text></TouchableOpacity>}
+                      {diaTravado ? <Text style={[styles.tdTaxa, { width: colTaxa, textAlign: 'right', paddingHorizontal: 6 }]}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text> : <TouchableOpacity style={[styles.tdTaxaWrapper, { width: colTaxa }]} onPress={() => abrirModalEditar(item)}><Text style={styles.tdTaxa}>{item.taxa > 0 ? formatCurrency(item.taxa) : '-'}</Text></TouchableOpacity>}
                       {diaTravado ? <View style={{ width: 42 }} /> : <TouchableOpacity accessibilityLabel="Excluir lançamento" style={styles.rowDeleteButton} onPress={() => setItemExcluirConfirmar(item)}><Ionicons name="trash-outline" size={15} color="#DC2626" /></TouchableOpacity>}
                     </View>)}
                     {itensLocal.length === 0 && <Text style={{ padding: 12, color: colors.muted }}>Nenhum lançamento neste local.</Text>}
@@ -1367,6 +1373,7 @@ export function PokerScreen() {
                   </View>}
                 </View>
               })}
+              </View>
               {!diaTravado && <View style={styles.sessaoBottomBar}>
                 {visualizacaoSessoes === 'detalhado' && <View style={styles.addLocalMenuArea}>
                   <TouchableOpacity
@@ -2593,6 +2600,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FEF3C7'
   },
+  locaisGradeDesktop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', paddingHorizontal: 6, paddingTop: 12 },
+  localCardDesktop: { marginHorizontal: 6, flexGrow: 1, flexBasis: 420 },
   desktopGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' },
   desktopGridItem: { width: '48.5%', flexGrow: 1, flexBasis: 420 },
   graphScreen: {

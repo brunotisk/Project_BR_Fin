@@ -344,12 +344,17 @@ export type LinhaPlanejamento = {
   nome: string
   /** Valores por mês no formato 'YYYY-MM'. Gastos são guardados como valores positivos. */
   valores: Record<string, number>
+  /** Grupo de gastos ao qual a linha pertence (só para gastos). */
+  grupoId?: string | null
 }
+export type GrupoPlanejamento = { id: string; nome: string }
 export type DadosPlanejamento = {
   /** Meses exibidos, em ordem, no formato 'YYYY-MM'. */
   meses: string[]
   /** Meses que continuam no plano, mas não aparecem na tela. */
   mesesOcultos?: string[]
+  /** Grupos para agrupar linhas de gastos. */
+  grupos?: GrupoPlanejamento[]
   linhas: LinhaPlanejamento[]
 }
 
@@ -380,13 +385,15 @@ function normalizarPlanejamento(bruto: any): DadosPlanejamento | null {
   return {
     meses: bruto.meses.filter((m: unknown) => typeof m === 'string' && /^\d{4}-\d{2}$/.test(m)),
     mesesOcultos: Array.isArray(bruto.mesesOcultos) ? bruto.mesesOcultos.filter((m: unknown) => typeof m === 'string') : [],
+    grupos: Array.isArray(bruto.grupos) ? bruto.grupos.filter((g: any) => g && typeof g.id === 'string').map((g: any) => ({ id: g.id, nome: String(g.nome ?? '') })) : [],
     linhas: bruto.linhas
       .filter((l: any) => l && typeof l.id === 'string')
       .map((l: any) => ({
         id: l.id,
         secao: l.secao === 'entrada' ? 'entrada' : 'gasto',
         nome: String(l.nome ?? ''),
-        valores: Object.fromEntries(Object.entries(l.valores || {}).map(([k, v]) => [k, Number(v) || 0]))
+        valores: Object.fromEntries(Object.entries(l.valores || {}).map(([k, v]) => [k, Number(v) || 0])),
+        grupoId: l.secao === 'gasto' && typeof l.grupoId === 'string' ? l.grupoId : null
       }))
   }
 }

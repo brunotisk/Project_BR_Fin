@@ -149,6 +149,7 @@ class NhostQuery implements PromiseLike<any> {
       let query: string
       let root: string
       let returning = false
+      let variables: Record<string, unknown> | undefined
 
       if (this.action === 'select') {
         root = table
@@ -163,16 +164,18 @@ class NhostQuery implements PromiseLike<any> {
           conflict = `, on_conflict: {constraint: ${constraint}, update_columns: [${updates.map(graphQLName).join(', ')}]}`
         }
         returning = true
-        query = `mutation { ${root}(objects: ${graphQLValue(objects)}${conflict}) { affected_rows returning { ${requested} } } }`
+        variables = { objects }
+        query = `mutation($objects: [${table}_insert_input!]!) { ${root}(objects: $objects${conflict}) { affected_rows returning { ${requested} } } }`
       } else if (this.action === 'update') {
         root = `update_${table}`; returning = true
-        query = `mutation { ${root}(${where || 'where: {}'}, _set: ${graphQLValue(this.values || {})}) { affected_rows returning { ${requested} } } }`
+        variables = { values: this.values || {} }
+        query = `mutation($values: ${table}_set_input!) { ${root}(${where || 'where: {}'}, _set: $values) { affected_rows returning { ${requested} } } }`
       } else {
         root = `delete_${table}`; returning = true
         query = `mutation { ${root}(${where || 'where: {}'}) { affected_rows returning { ${requested} } } }`
       }
 
-      const response = await this.owner.request(query)
+      const response = await this.owner.request(query, variables)
       if (response.error) return { data: null, error: response.error }
       let data = response.data?.[root]
       if (returning) data = data?.returning ?? null
@@ -232,12 +235,24 @@ export class NhostCompatClient {
     }
   }
 
-  async request(query: string) {
+  async request(query: string, variables?: Record<string, unknown>) {
     try {
-      const response = await nhost.graphql.request({ query })
+      const response = await nhost.graphql.request({ query, ...(variables ? { variables } : {}) })
       const body: any = response.body
       const errors = body?.errors
-      if (errors?.length) return { data: null, error: { message: errors.map((item: any) => item.message).join('; '), code: errors[0].extensions?.code } }
+      if (errors?.length) {
+        const message = errors.map((item: any) => {
+          const interno = item.extensions?.internal?.error?.message || item.extensions?.internal?.message
+          return interno ? `${item.message}: ${interno}` : item.message
+        }).join('; ')
+        console.error('[Nhost GraphQL] Consulta rejeitada', {
+          message,
+          code: errors[0].extensions?.code,
+          internal: errors[0].extensions?.internal,
+          query: query.replace(/"(?:[^"\\]|\\.)*"/g, '"[valor oculto]"')
+        })
+        return { data: null, error: { message, code: errors[0].extensions?.code } }
+      }
       return { data: body?.data, error: null }
     } catch (error) {
       const detail = error as any
